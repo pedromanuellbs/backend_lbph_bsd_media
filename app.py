@@ -34,11 +34,12 @@ os.makedirs(FACES_DIR, exist_ok=True)
 def save_face_image(user_id: str, image_file) -> str:
     """
     Simpan gambar upload ke folder faces/<user_id>/N.jpg
+    Folder user_id akan otomatis dibuat kalau belum ada.
     Mengembalikan path file yang disimpan.
     """
     user_dir = os.path.join(FACES_DIR, user_id)
-    os.makedirs(user_dir, exist_ok=True)
-    count = len(os.listdir(user_dir))
+    os.makedirs(user_dir, exist_ok=True)  # Otomatis bikin folder user baru
+    count = len([f for f in os.listdir(user_dir) if f.lower().endswith('.jpg')])
     dst = os.path.join(user_dir, f"{count+1}.jpg")
     image_file.save(dst)
     return dst
@@ -70,29 +71,48 @@ def home():
     return "BSD Media LBPH Backend siap!"
 
 
-
-
 @app.route('/register_face', methods=['POST'])
 def register_face():
-    # ambil user_id & image dari form-data
-    user_id = request.form['user_id']
-    image   = request.files['image']
-    # simpan dan preprocess
+    # --- DEBUG LOGGING UNTUK TROUBLESHOOTING UPLOAD ---
+    print("===== MULAI register_face =====")
+    print("request.files:", request.files)
+    print("request.form:", request.form)
+    user_id = request.form.get('user_id')
+    image   = request.files.get('image')
+    if image:
+        print("image.filename:", image.filename)
+        print("image.content_length:", image.content_length)
+    else:
+        print("Tidak ada file 'image' di request!")
+
+    # Validasi awal
+    if not user_id or not image:
+        return jsonify({'success': False, 'error': 'user_id atau image tidak ada di request'}), 400
+
+    # Simpan gambar ke folder user baru/eksisting (folder otomatis dibuat jika belum ada)
     raw_path = save_face_image(user_id, image)
     cropped  = detect_and_crop(raw_path)
+    # --- Tambahkan pengecekan hasil crop ---
+    if cropped is None or cropped.size == 0:
+        print("Gagal cropping/gambar kosong!")
+        return jsonify({'success': False, 'error': 'Gagal cropping/gambar kosong!'}), 400
     cv2.imwrite(raw_path, cropped)
     # retrain dan simpan model
     metrics = train_and_evaluate()
     return jsonify({ 'success': True, 'metrics': metrics })
 
+
 @app.route('/verify_face', methods=['POST'])
 def verify_face():
-    # ambil image dari form-data
-    image = request.files['image']
+    image = request.files.get('image')
+    if not image:
+        return jsonify({'success': False, 'error': 'image tidak ada di request'}), 400
     # preprocess & predict
     tmp = 'tmp.jpg'; image.save(tmp)
     gray = detect_and_crop(tmp); os.remove(tmp)
     model, lblmap = load_model_and_labels()
+    if model is None:
+        return jsonify({'success': False, 'error': 'Model belum ada'}), 400
     label, conf = model.predict(gray)
     return jsonify({ 'success': True, 'user_id': lblmap[label], 'confidence': float(conf) })
 
