@@ -14,7 +14,7 @@ from config import FACES_DIR, MODEL_PATH, LABEL_MAP
 import firebase_admin
 from firebase_admin import credentials, storage
 
-FIREBASE_BUCKET_NAME = "db-ta-bsd-media.appspot.com"  # Pastikan ini sesuai dengan bucket Storage Firebase kamu
+FIREBASE_BUCKET_NAME = "db-ta-bsd-media.firebasestorage.app"  # Pastikan ini sesuai dengan bucket Storage Firebase kamu
 
 # --- Load credential dari environment variable, bukan dari file ---
 cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
