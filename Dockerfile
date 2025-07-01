@@ -1,6 +1,6 @@
 FROM python:3.10-slim
 
-# 1) Install system-deps untuk OpenCV, Pillow, dan PyTorch CPU
+# 1) Install system‐deps untuk OpenCV, Pillow, dan PyTorch CPU
 RUN apt-get update && apt-get install -y \
     build-essential \
     libglib2.0-0 \
@@ -13,14 +13,14 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# 2) Copy hanya requirements.txt dulu untuk leverage Docker cache
+# 2) Copy hanya requirements.txt dulu
 COPY requirements.txt .
 
-# 3) (Debug) Tampilkan isi requirements agar pasti benar
+# 3) (Debug) Tampilkan isi requirements agar kita yakin sudah bersih
 RUN echo "--- requirements.txt @ build time ---" \
  && cat requirements.txt
 
-# 4) Upgrade pip & install Python deps (facenet-pytorch, torch, torchvision, scikit-learn, Pillow, dsb)
+# 4) Upgrade pip & install Python deps
 RUN pip install --upgrade pip \
  && pip install -r requirements.txt
 
@@ -28,5 +28,4 @@ RUN pip install --upgrade pip \
 COPY . .
 
 EXPOSE 8000
-
 CMD ["python", "app.py"]
