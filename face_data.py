@@ -2,7 +2,7 @@ import os
 import numpy as np
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from face_preprocessing import detect_and_crop
-from app import FACES_DIR  # atau pindahkan konstanta FACES_DIR ke modul utils jika suka
+from config import FACES_DIR  # atau pindahkan konstanta FACES_DIR ke modul utils jika suka
 
 def build_dataset():
     X, y, label_map = [], [], {}
