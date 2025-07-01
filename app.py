@@ -70,74 +70,29 @@ def home():
     return "BSD Media LBPH Backend siap!"
 
 
-@app.route("/register_face", methods=["POST"])
+@app.route('/register_face', methods=['POST'])
 def register_face():
-    """
-    Endpoint untuk registrasi muka:
-    - Simpan gambar
-    - Deteksi & crop→grayscale
-    - Latih ulang model penuh
-    - Kembalikan metrik evaluasi
-    """
-    user_id = request.form.get("user_id")
-    image   = request.files.get("image")
-
-    if not user_id or not image:
-        return jsonify({'success': False, 'error': 'Missing user_id or image'}), 400
-
-    # Simpan + preprocess
+    # ambil user_id & image dari form-data
+    user_id = request.form['user_id']
+    image   = request.files['image']
+    # simpan dan preprocess
     raw_path = save_face_image(user_id, image)
-    gray     = detect_and_crop(raw_path)
-    if gray is None:
-        return jsonify({'success': False, 'error': 'No face detected'}), 400
-
-    cv2.imwrite(raw_path, gray)
-
-    # Latih & evaluasi ulang seluruh dataset
+    cropped  = detect_and_crop(raw_path)
+    cv2.imwrite(raw_path, cropped)
+    # retrain dan simpan model
     metrics = train_and_evaluate()
+    return jsonify({ 'success': True, 'metrics': metrics })
 
-    return jsonify({
-        'success': True,
-        'message': f'Face registered for {user_id}',
-        'metrics': metrics
-    })
-
-
-@app.route("/verify_face", methods=["POST"])
+@app.route('/verify_face', methods=['POST'])
 def verify_face():
-    """
-    Endpoint untuk verifikasi muka:
-    - Simpan sementara + preprocess
-    - Muat model & label_map
-    - Lakukan predict dan kembalikan user_id + confidence
-    """
-    image = request.files.get("image")
-    if not image:
-        return jsonify({'success': False, 'error': 'No image provided'}), 400
+    # ambil image dari form-data
+    image = request.files['image']
+    # preprocess & predict
+    tmp = 'tmp.jpg'; image.save(tmp)
+    gray = detect_and_crop(tmp); os.remove(tmp)
+    model, lblmap = load_model_and_labels()
+    label, conf = model.predict(gray)
+    return jsonify({ 'success': True, 'user_id': lblmap[label], 'confidence': float(conf) })
 
-    tmp_path = "tmp_verify.jpg"
-    image.save(tmp_path)
-    gray = detect_and_crop(tmp_path)
-    os.remove(tmp_path)
-
-    if gray is None:
-        return jsonify({'success': False, 'error': 'No face detected'}), 400
-
-    model, label_map = load_model_and_labels()
-    if model is None or not label_map:
-        return jsonify({'success': False, 'error': 'Model not trained yet'}), 400
-
-    label, confidence = model.predict(gray)
-    user_id = label_map.get(label, "Unknown")
-
-    return jsonify({
-        'success': True,
-        'user_id': user_id,
-        'confidence': float(confidence)
-    })
-
-
-# ─── Main ─────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    # Jangan jalankan debug=True di production
-    app.run(host="0.0.0.0", port=8000, debug=False)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8000)
