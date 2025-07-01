@@ -15,7 +15,7 @@ from firebase_admin import credentials, storage
 
 # Ganti path berikut dengan path ke file credential JSON Firebase kamu
 FIREBASE_CRED_PATH = "db-ta-bsd-media-firebase-adminsdk-fbsvc-b70eb2f920.json"
-FIREBASE_BUCKET_NAME = "db-ta-bsd-media.firebasestorage.app"  # Ganti sesuai bucket project Firebase Storage kamu
+FIREBASE_BUCKET_NAME = "db-ta-bsd-media.firebasestorage.com"  # Ganti sesuai bucket project Firebase Storage kamu
 
 cred = credentials.Certificate(FIREBASE_CRED_PATH)
 firebase_admin.initialize_app(cred, {'storageBucket': FIREBASE_BUCKET_NAME})
