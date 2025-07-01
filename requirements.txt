@@ -8,4 +8,3 @@ torch
 torchvision
 
 scikit-learn
-Pillow

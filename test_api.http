@@ -1,0 +1,14 @@
+### Register Face
+POST https://backendlbphbsdmedia-production.up.railway.app/register_face
+Content-Type: multipart/form-data
+
+--boundary
+Content-Disposition: form-data; name="user_id"
+
+user123
+--boundary
+Content-Disposition: form-data; name="image"; filename="contoh1.jpg"
+Content-Type: image/jpeg
+
+< ./faces/contoh1.jpg
+--boundary--
