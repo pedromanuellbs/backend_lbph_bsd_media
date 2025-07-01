@@ -6,20 +6,23 @@ mtcnn = MTCNN(image_size=96, margin=0)
 
 def detect_and_crop(img_path):
     img = Image.open(img_path)
-    face = mtcnn(img)           # bisa None, atau Tensor
+    face = mtcnn(img)
 
     if face is None:
         return None
 
-    # Jika batch dim: (1, C, H, W) → (C, H, W)
+    # Handle batch dimension
     if face.dim() == 4:
         face = face.squeeze(0)
 
-    # Jika cuma 1 channel (grayscale), duplikasi ke 3 channel
+    # Handle grayscale
     if face.size(0) == 1:
         face = face.expand(3, -1, -1)
 
-    # Pastikan shape sekarang (3,96,96)
-    rgb = face.permute(1, 2, 0).mul(255).byte().cpu().numpy()
-    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-    return gray
+    # Pastikan tensor 3 dimensi sebelum permute
+    if face.dim() == 3:
+        rgb = face.permute(1, 2, 0).mul(255).byte().cpu().numpy()
+        gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+        return gray
+    else:
+        raise ValueError(f"Tensor shape tidak sesuai: {face.shape}")
