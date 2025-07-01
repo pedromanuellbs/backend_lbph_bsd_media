@@ -11,16 +11,15 @@ def detect_and_crop(img_path):
     if face is None:
         return None
 
-    # Jika ada dim batch: (1, C, H, W) → (C, H, W)
+    # Jika batch dim: (1, C, H, W) → (C, H, W)
     if face.dim() == 4:
         face = face.squeeze(0)
 
-    # Jika C=1 (grayscale), kita duplikat channel jadi 3
+    # Jika cuma 1 channel (grayscale), duplikasi ke 3 channel
     if face.size(0) == 1:
         face = face.expand(3, -1, -1)
 
-    # Sekarang pasti face.shape = (3,96,96)
-    # Konversi ke numpy grayscale:
+    # Pastikan shape sekarang (3,96,96)
     rgb = face.permute(1, 2, 0).mul(255).byte().cpu().numpy()
     gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
     return gray
