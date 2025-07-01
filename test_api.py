@@ -1,32 +1,34 @@
 import requests
+import glob
+import os
 
-BASE = "https://backendlbphbsdmedia-production.up.railway.app"
+BASE    = "https://backendlbphbsdmedia-production.up.railway.app"
+USER_ID = "user123"
 
-# 1) Register
-with open("faces/contoh1.jpg", "rb") as f:
-    data  = {"user_id": "user123"}
-    files = {"image": f}
-    r = requests.post(f"{BASE}/register_face", data=data, files=files)
+# 1) Batch Register
+faces_dir = os.path.join("faces", USER_ID)
+register_paths = glob.glob(os.path.join(faces_dir, "*.jpg"))
 
-print("=== REGISTER ===")
-print("Status code:", r.status_code)
-print("Content-Type:", r.headers.get("Content-Type"))
-print("Response body:", repr(r.text))  # cetak mentah, termasuk whitespace
-try:
-    print("JSON:", r.json())
-except Exception as e:
-    print("Failed to parse JSON:", e)
+print("=== REGISTER BATCH ===")
+for path in register_paths:
+    with open(path, "rb") as f:
+        r = requests.post(
+            f"{BASE}/register_face",
+            data={"user_id": USER_ID},
+            files={"image": f}
+        )
+    print(f"{os.path.basename(path):20} → {r.status_code}  {r.json()}")
 
-# 2) Verify
-with open("faces/contoh2_test.jpg", "rb") as f:
-    files = {"image": f}
-    r = requests.post(f"{BASE}/verify_face", files=files)
+# 2) Batch Verify
+# Let’s assume kamu punya folder `faces/user123_test/` dengan 5 foto untuk verifikasi
+verify_dir   = os.path.join("faces", f"{USER_ID}_test")
+verify_paths = glob.glob(os.path.join(verify_dir, "*.jpg"))
 
-print("\n=== VERIFY ===")
-print("Status code:", r.status_code)
-print("Content-Type:", r.headers.get("Content-Type"))
-print("Response body:", repr(r.text))
-try:
-    print("JSON:", r.json())
-except Exception as e:
-    print("Failed to parse JSON:", e)
+print("\n=== VERIFY BATCH ===")
+for path in verify_paths:
+    with open(path, "rb") as f:
+        r = requests.post(
+            f"{BASE}/verify_face",
+            files={"image": f}
+        )
+    print(f"{os.path.basename(path):20} → {r.status_code}  {r.json()}")
