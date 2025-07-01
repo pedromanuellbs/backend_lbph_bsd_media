@@ -7,6 +7,26 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score
 from face_preprocessing import detect_and_crop
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP
 
+# Dataset Structure:
+# faces/
+#   <user_id>/
+#     img_front.jpg      # menghadap depan
+#     img_left.jpg       # menoleh kiri
+#     img_right.jpg      # menoleh kanan
+#     img_up.jpg         # menghadap atas
+#     img_down.jpg       # menghadap bawah
+#
+# Setiap folder user_id berisi variasi posisi wajah (.jpg).
+# Struktur ini memudahkan pelatihan (train) dan pengujian (test) model face recognition.
+
+import numpy as np
+import cv2
+import torch
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import accuracy_score, precision_score, recall_score
+from face_preprocessing import detect_and_crop
+from config import FACES_DIR, MODEL_PATH, LABEL_MAP
+
 
 def build_dataset():
     """
