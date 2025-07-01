@@ -1,4 +1,17 @@
+<<<<<<< HEAD
 flask
 opencv-python
 opencv-contrib-python
 numpy
+=======
+# existing
+Flask
+opencv-python
+numpy
+# tambahkan:
+facenet-pytorch
+torch
+torchvision
+scikit-learn
+Pillow
+>>>>>>> 909f6ab (update face rec)
