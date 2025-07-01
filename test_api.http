@@ -1,6 +1,20 @@
+# ### Register Face
+# POST https://backendlbphbsdmedia-production.up.railway.app/register_face
+# Accept: application/json
+
+# user_id=user123
+# image=@./faces/contoh1.jpg
+
+# ### Verify Face
+# POST https://backendlbphbsdmedia-production.up.railway.app/verify_face
+# Accept: application/json
+
+# image=@./faces/contoh2_test.jpg
+
+
 ### Register Face
 POST https://backendlbphbsdmedia-production.up.railway.app/register_face
-Content-Type: multipart/form-data
+Content-Type: multipart/form-data; boundary=boundary
 
 --boundary
 Content-Disposition: form-data; name="user_id"

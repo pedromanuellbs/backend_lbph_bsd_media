@@ -70,6 +70,8 @@ def home():
     return "BSD Media LBPH Backend siap!"
 
 
+
+
 @app.route('/register_face', methods=['POST'])
 def register_face():
     # ambil user_id & image dari form-data
