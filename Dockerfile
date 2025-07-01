@@ -1,5 +1,8 @@
 FROM python:3.10-slim
 
+# debug: tampilkan isi requirements.txt
+RUN echo "--- requirements.txt @ build time ---" && cat requirements.txt
+
 # 1) Install system-deps untuk OpenCV, Pillow, dan PyTorch CPU
 RUN apt-get update && apt-get install -y \
     build-essential \
