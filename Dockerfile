@@ -1,6 +1,7 @@
+# 1. Base image ringan
 FROM python:3.10-slim
 
-# 1) Install system‐deps untuk OpenCV, Pillow, dan PyTorch CPU
+# 2. Install system deps untuk OpenCV headless, Pillow, dan kebutuhan build
 RUN apt-get update && apt-get install -y \
     build-essential \
     libglib2.0-0 \
@@ -13,19 +14,18 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# 2) Copy hanya requirements.txt dulu
+# 3. Copy file requirements.txt lebih dulu
 COPY requirements.txt .
 
-# 3) (Debug) Tampilkan isi requirements agar kita yakin sudah bersih
-RUN echo "--- requirements.txt @ build time ---" \
- && cat requirements.txt
-
-# 4) Upgrade pip & install Python deps
-RUN pip install --upgrade pip \
- && pip install -r requirements.txt
-
-# 5) Copy seluruh source code
+# 4. Copy kode aplikasi
 COPY . .
 
+# 5. Upgrade pip, install CPU-only PyTorch & deps, lalu install sisa requirements
+RUN pip install --upgrade pip \
+  && pip install torch==2.2.2+cpu torchvision==0.17.2+cpu \
+       --extra-index-url https://download.pytorch.org/whl/cpu \
+  && pip install -r requirements.txt
+
+# 6. Expose port dan jalankan aplikasi
 EXPOSE 8000
 CMD ["python", "app.py"]
