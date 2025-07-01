@@ -2,7 +2,7 @@ import os
 import traceback
 
 import cv2
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 
 from face_preprocessing import detect_and_crop
 from face_data import train_and_evaluate
@@ -115,6 +115,31 @@ def verify_face():
         return jsonify({'success': False, 'error': 'Model belum ada'}), 400
     label, conf = model.predict(gray)
     return jsonify({ 'success': True, 'user_id': lblmap[label], 'confidence': float(conf) })
+
+# --- Tambahan: Endpoint untuk melihat daftar file wajah user ---
+@app.route('/list_user_faces', methods=['GET'])
+def list_user_faces():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({'success': False, 'error': 'Parameter user_id wajib diisi'}), 400
+    user_dir = os.path.join(FACES_DIR, user_id)
+    if not os.path.exists(user_dir):
+        return jsonify({'success': False, 'files': [], 'error': 'User belum punya data'}), 200
+    files = [f for f in os.listdir(user_dir) if f.lower().endswith('.jpg')]
+    return jsonify({'success': True, 'files': files}), 200
+
+# --- Tambahan: Endpoint untuk download/lihat gambar user tertentu ---
+@app.route('/get_face_image', methods=['GET'])
+def get_face_image():
+    user_id = request.args.get('user_id')
+    filename = request.args.get('filename')
+    if not user_id or not filename:
+        return jsonify({'success': False, 'error': 'Parameter user_id dan filename wajib diisi'}), 400
+    user_dir = os.path.join(FACES_DIR, user_id)
+    file_path = os.path.join(user_dir, filename)
+    if not os.path.exists(file_path):
+        return jsonify({'success': False, 'error': 'File tidak ditemukan'}), 404
+    return send_from_directory(user_dir, filename)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000)
