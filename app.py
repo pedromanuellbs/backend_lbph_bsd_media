@@ -9,6 +9,26 @@ from face_data import train_and_evaluate
 
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP
 
+# --- Tambahan: Import dan setup Firebase Admin SDK ---
+import firebase_admin
+from firebase_admin import credentials, storage
+
+# Ganti path berikut dengan path ke file credential JSON Firebase kamu
+FIREBASE_CRED_PATH = "db-ta-bsd-media-firebase-adminsdk-fbsvc-b70eb2f920.json"
+FIREBASE_BUCKET_NAME = "db-ta-bsd-media.firebasestorage.app"  # Ganti sesuai bucket project Firebase Storage kamu
+
+cred = credentials.Certificate(FIREBASE_CRED_PATH)
+firebase_admin.initialize_app(cred, {'storageBucket': FIREBASE_BUCKET_NAME})
+bucket = storage.bucket()
+
+# Fungsi helper untuk upload file ke Firebase Storage
+def upload_to_firebase(local_file, user_id, filename):
+    """Upload file ke Firebase Storage dan return URL download-nya"""
+    blob = bucket.blob(f"face-dataset/{user_id}/{filename}")
+    blob.upload_from_filename(local_file)
+    blob.make_public()  # Atur permission sesuai kebutuhan
+    return blob.public_url
+
 app = Flask(__name__)
 
 # ─── Error Handler ─────────────────────────────────────────────────────────
@@ -97,9 +117,13 @@ def register_face():
         print("Gagal cropping/gambar kosong!")
         return jsonify({'success': False, 'error': 'Gagal cropping/gambar kosong!'}), 400
     cv2.imwrite(raw_path, cropped)
+    
+    # --- Upload ke Firebase Storage ---
+    firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
+
     # retrain dan simpan model
     metrics = train_and_evaluate()
-    return jsonify({ 'success': True, 'metrics': metrics })
+    return jsonify({ 'success': True, 'metrics': metrics, 'firebase_image_url': firebase_url })
 
 
 @app.route('/verify_face', methods=['POST'])
