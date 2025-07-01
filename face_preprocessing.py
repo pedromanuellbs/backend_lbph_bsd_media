@@ -6,20 +6,19 @@ mtcnn = MTCNN(image_size=96, margin=0)
 
 def detect_and_crop(img_path):
     """
-    Deteksi wajah dari img_path → crop + resize 96×96 → 
-    kembalikan grayscale numpy array atau None.
+    Deteksi wajah → crop & resize 96×96 → kembalikan grayscale numpy array.
     """
     img = Image.open(img_path)
-    face = mtcnn(img)  # bisa jadi Tensor[3,96,96] atau Tensor[1,3,96,96]
+    face = mtcnn(img)  # bisa return Tensor dengan shape (3,96,96) atau (1,3,96,96)
     if face is None:
         return None
 
-    # Jika ada batch dim (1,3,96,96), buang jadi (3,96,96)
+    # Buang batch dimension kalau ada
     if face.dim() == 4:
-        face = face.squeeze(0)
+        face = face.squeeze(0)    # from (1,3,96,96) to (3,96,96)
 
-    # Konversi ke uint8 numpy dan grayscale
     # face sekarang pasti shape (3,96,96)
-    rgb = face.mul(255).byte().permute(1, 2, 0).numpy()  # (96,96,3)
-    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)         # (96,96)
+    # Konversi ke (96,96,3) uint8 lalu ke grayscale
+    rgb = face.mul(255).byte().permute(1, 2, 0).numpy()
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
     return gray
