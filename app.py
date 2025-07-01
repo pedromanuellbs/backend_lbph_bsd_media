@@ -1,5 +1,6 @@
 import os
 import traceback
+import json
 
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
@@ -9,15 +10,15 @@ from face_data import train_and_evaluate
 
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP
 
-# --- Tambahan: Import dan setup Firebase Admin SDK ---
+# --- Import dan setup Firebase Admin SDK ---
 import firebase_admin
 from firebase_admin import credentials, storage
 
-# Ganti path berikut dengan path ke file credential JSON Firebase kamu
-FIREBASE_CRED_PATH = "db-ta-bsd-media-firebase-adminsdk-fbsvc-b70eb2f920.json"
-FIREBASE_BUCKET_NAME = "db-ta-bsd-media.firebasestorage.com"  # Ganti sesuai bucket project Firebase Storage kamu
+FIREBASE_BUCKET_NAME = "db-ta-bsd-media.appspot.com"  # Pastikan ini sesuai dengan bucket Storage Firebase kamu
 
-cred = credentials.Certificate(FIREBASE_CRED_PATH)
+# --- Load credential dari environment variable, bukan dari file ---
+cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
+cred = credentials.Certificate(cred_info)
 firebase_admin.initialize_app(cred, {'storageBucket': FIREBASE_BUCKET_NAME})
 bucket = storage.bucket()
 
@@ -40,7 +41,6 @@ def handle_exceptions(e):
     print(tb)
     return jsonify({'success': False, 'error': str(e)}), 500
 
-
 # ─── Konstanta ─────────────────────────────────────────────────────────────
 FACES_DIR       = "faces"
 MODEL_PATH      = "lbph_model.xml"
@@ -48,7 +48,6 @@ LABELS_MAP_PATH = "labels_map.txt"
 
 # Pastikan direktori dataset ada
 os.makedirs(FACES_DIR, exist_ok=True)
-
 
 # ─── Helper Functions ──────────────────────────────────────────────────────
 def save_face_image(user_id: str, image_file) -> str:
@@ -63,7 +62,6 @@ def save_face_image(user_id: str, image_file) -> str:
     dst = os.path.join(user_dir, f"{count+1}.jpg")
     image_file.save(dst)
     return dst
-
 
 def load_model_and_labels():
     """
@@ -84,12 +82,10 @@ def load_model_and_labels():
 
     return model, label_map
 
-
 # ─── Routes ────────────────────────────────────────────────────────────────
 @app.route("/", methods=["GET"])
 def home():
     return "BSD Media LBPH Backend siap!"
-
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
@@ -124,7 +120,6 @@ def register_face():
     # retrain dan simpan model
     metrics = train_and_evaluate()
     return jsonify({ 'success': True, 'metrics': metrics, 'firebase_image_url': firebase_url })
-
 
 @app.route('/verify_face', methods=['POST'])
 def verify_face():
