@@ -8,6 +8,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score
 from face_preprocessing import detect_and_crop
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP
 
+
 def build_dataset():
     """Bangun X (array gambar), y (label), dan label_map dari folder faces/."""
     X, y, label_map = [], [], {}
