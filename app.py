@@ -167,85 +167,29 @@ def verify_face():
 
 # Ganti fungsi find_my_photos yang lama dengan yang ini
 
+# Ganti lagi fungsi find_my_photos dengan versi DUMMY ini
+
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
-    print("\n===== MULAI find_my_photos (VERSI RINGAN) =====")
+    print("===== MULAI find_my_photos (VERSI DUMMY TEST) =====")
     image = request.files.get('image')
 
     if not image:
+        print("[DUMMY] Request tidak ada gambar.")
         return jsonify({'success': False, 'error': 'image tidak ada di request'}), 400
 
-    tmp_path = 'tmp_find.jpg'
-    image.save(tmp_path)
-    client_face_gray = detect_and_crop(tmp_path)
-    os.remove(tmp_path)
+    print("[DUMMY] Gambar diterima. Langsung mengembalikan hasil palsu.")
 
-    if client_face_gray is None:
-        print("[DEBUG] GAGAL: Wajah klien tidak terdeteksi.")
-        return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi pada gambar yang di-upload'}), 400
+    # Langsung kembalikan hasil dummy tanpa proses berat sama sekali
+    # URL ini adalah contoh gambar placeholder
+    dummy_urls = [
+        "https://i.imgur.com/g3OhR3s.jpeg"
+    ]
 
-    model, label_map = load_model_and_labels()
-    if model is None:
-        return jsonify({'success': False, 'error': 'Model belum ada'}), 400
-
-    label, confidence = model.predict(client_face_gray)
-    client_user_id = label_map.get(label, 'unknown')
-    print(f"[DEBUG] Wajah klien terverifikasi sebagai user_id: '{client_user_id}'")
-
-    if client_user_id == 'unknown':
-        return jsonify({'success': True, 'user_id': 'unknown', 'photo_urls': []})
-
-    matching_urls = []
-    
-    # UBAHAN 1: Ambil hanya 1 sesi foto terbaru untuk meringankan beban
-    sessions_ref = db.collection('photo_sessions').order_by('createdAt', direction=firestore.Query.DESCENDING).limit(1).stream()
-    
-    for session in sessions_ref:
-        session_data = session.to_dict()
-        drive_link = session_data.get('driveLink')
-        if not drive_link:
-            continue
-        
-        print(f"\n[DEBUG] Memeriksa sesi: '{session_data.get('title')}'")
-        photo_urls_in_drive = fetch_images_from_drive_folder(drive_link)
-        print(f"[DEBUG] Ditemukan {len(photo_urls_in_drive)} foto di Google Drive.")
-
-        # UBAHAN 2: Proses maksimal 5 foto pertama saja per sesi
-        for i, photo_url in enumerate(photo_urls_in_drive):
-            if i >= 5:
-                print("[DEBUG] -- Mencapai batas 5 foto, berhenti memeriksa sesi ini.")
-                break
-            
-            try:
-                print(f"[DEBUG] -- Memproses foto: {photo_url.split('&id=')[1]}")
-                response = requests.get(photo_url, stream=True, timeout=15)
-                if response.status_code == 200:
-                    with open("temp_drive_photo.jpg", 'wb') as f:
-                        f.write(response.content)
-
-                    drive_photo_gray = detect_and_crop("temp_drive_photo.jpg")
-                    if drive_photo_gray is not None:
-                        predicted_label, _ = model.predict(drive_photo_gray)
-                        predicted_user_id = label_map.get(predicted_label)
-                        
-                        if predicted_user_id == client_user_id:
-                            print(f"[DEBUG] -- >>> COCOK! Foto ini adalah milik '{client_user_id}'")
-                            matching_urls.append(photo_url)
-                        else:
-                            print(f"[DEBUG] -- TIDAK COCOK.")
-                    else:
-                        print(f"[DEBUG] -- Wajah TIDAK terdeteksi.")
-            except Exception as e:
-                print(f"[DEBUG] -- ERROR saat memproses foto dari drive {photo_url}: {e}")
-        
-        if os.path.exists("temp_drive_photo.jpg"):
-            os.remove("temp_drive_photo.jpg")
-
-    print(f"\n[HASIL AKHIR] Ditemukan total {len(matching_urls)} foto yang cocok.")
     return jsonify({
         'success': True,
-        'user_id': client_user_id,
-        'photo_urls': matching_urls
+        'user_id': 'user_dummy_test',
+        'photo_urls': dummy_urls
     })
 
 @app.route('/list_user_faces', methods=['GET'])
