@@ -165,7 +165,7 @@ def verify_face():
 
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
-    print("===== MULAI find_my_photos =====")
+    print("\n===== MULAI find_my_photos =====")
     image = request.files.get('image')
 
     if not image:
@@ -177,15 +177,17 @@ def find_my_photos():
     os.remove(tmp_path)
 
     if client_face_gray is None:
+        print("[DEBUG] GAGAL: Wajah klien tidak terdeteksi dari gambar upload.")
         return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi pada gambar yang di-upload'}), 400
 
     model, label_map = load_model_and_labels()
     if model is None:
+        print("[DEBUG] GAGAL: Model tidak ditemukan.")
         return jsonify({'success': False, 'error': 'Model belum ada, tidak bisa melakukan pencocokan'}), 400
 
     label, confidence = model.predict(client_face_gray)
     client_user_id = label_map.get(label, 'unknown')
-    print(f"Wajah terverifikasi sebagai user_id: {client_user_id} dengan confidence: {confidence}")
+    print(f"[DEBUG] Wajah klien terverifikasi sebagai user_id: '{client_user_id}' dengan confidence: {confidence}")
 
     if client_user_id == 'unknown':
         return jsonify({'success': True, 'user_id': 'unknown', 'photo_urls': []})
@@ -199,31 +201,39 @@ def find_my_photos():
         if not drive_link:
             continue
         
-        print(f"Memeriksa sesi: {session_data.get('title')}...")
+        print(f"\n[DEBUG] Memeriksa sesi: '{session_data.get('title')}'")
         photo_urls_in_drive = fetch_images_from_drive_folder(drive_link)
+        print(f"[DEBUG] Ditemukan {len(photo_urls_in_drive)} foto di Google Drive.")
 
         for photo_url in photo_urls_in_drive:
             try:
-                response = requests.get(photo_url, stream=True, timeout=10)
+                print(f"[DEBUG] -- Memproses foto: {photo_url.split('&id=')[1]}")
+                response = requests.get(photo_url, stream=True, timeout=15)
                 if response.status_code == 200:
                     with open("temp_drive_photo.jpg", 'wb') as f:
                         f.write(response.content)
 
                     drive_photo_gray = detect_and_crop("temp_drive_photo.jpg")
                     if drive_photo_gray is not None:
-                        predicted_label, _ = model.predict(drive_photo_gray)
+                        print(f"[DEBUG] -- Wajah TERDETEKSI di foto Drive.")
+                        predicted_label, pred_confidence = model.predict(drive_photo_gray)
                         predicted_user_id = label_map.get(predicted_label)
+                        print(f"[DEBUG] -- Hasil prediksi: user_id '{predicted_user_id}' (Confidence: {pred_confidence})")
                         
                         if predicted_user_id == client_user_id:
-                            print(f"COCOK! Foto {photo_url} adalah milik {client_user_id}")
+                            print(f"[DEBUG] -- >>> COCOK! Foto ini adalah milik '{client_user_id}'")
                             matching_urls.append(photo_url)
+                        else:
+                            print(f"[DEBUG] -- TIDAK COCOK. Prediksi '{predicted_user_id}' != Target '{client_user_id}'")
+                    else:
+                        print(f"[DEBUG] -- Wajah TIDAK terdeteksi di foto Drive.")
             except Exception as e:
-                print(f"Error memproses foto dari drive {photo_url}: {e}")
+                print(f"[DEBUG] -- ERROR saat memproses foto dari drive {photo_url}: {e}")
         
         if os.path.exists("temp_drive_photo.jpg"):
             os.remove("temp_drive_photo.jpg")
 
-    print(f"Ditemukan {len(matching_urls)} foto yang cocok.")
+    print(f"\n[HASIL AKHIR] Ditemukan total {len(matching_urls)} foto yang cocok.")
     return jsonify({
         'success': True,
         'user_id': client_user_id,
