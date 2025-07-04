@@ -7,5 +7,7 @@ facenet-pytorch
 torch
 torchvision
 
+requests
+
 scikit-learn
 firebase-admin
