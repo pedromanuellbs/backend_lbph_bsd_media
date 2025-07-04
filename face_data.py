@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import cv2
-import torch
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 from face_preprocessing import detect_and_crop
