@@ -35,7 +35,7 @@ except Exception as e:
 # --- Konstanta ---
 DRIVE_API_KEY = "AIzaSyC_vPd6yPwYQ60Pn-tuR3Nly_7mgXZcxGk"
 
-# --- Helper Functions ---
+# --- Helper Functions (Tidak ada perubahan) ---
 def load_model_and_labels():
     if not os.path.exists(MODEL_PATH) or not os.path.exists(LABEL_MAP):
         return None, {}
@@ -54,7 +54,6 @@ def fetch_images_from_drive_folder(folder_url):
     if '/d/' in folder_url: folder_id = folder_url.split('/d/')[1].split('/')[0]
     elif '/folders/' in folder_url: folder_id = folder_url.split('/folders/')[1].split('/')[0]
     if not folder_id: return []
-    
     api_url = "https://www.googleapis.com/drive/v3/files"
     params = {'q': f"'{folder_id}' in parents and mimeType contains 'image/'", 'fields': 'files(id)', 'key': DRIVE_API_KEY, 'pageSize': 100}
     try:
@@ -74,6 +73,7 @@ def home():
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
+    # Endpoint ini HANYA untuk menyimpan gambar wajah baru dengan cepat.
     user_id = request.form.get('user_id')
     image = request.files.get('image')
     if not user_id or not image: return jsonify({'success': False, 'error': 'user_id atau image tidak ada'}), 400
@@ -87,48 +87,55 @@ def register_face():
     cropped = detect_and_crop(raw_path)
     if cropped is None: return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
     
-    cv2.imwrite(raw_path, cropped) # Timpa gambar asli dengan versi cropped
-    train_and_evaluate()
-    return jsonify({'success': True, 'message': 'Wajah berhasil diregistrasi dan model di-train ulang.'})
+    cv2.imwrite(raw_path, cropped)
+    
+    print(f"Wajah untuk user '{user_id}' berhasil disimpan. Jalankan /train_model untuk melatih ulang.")
+    return jsonify({'success': True, 'message': 'Wajah berhasil disimpan. Model perlu di-train ulang secara manual.'})
+
+# --- ENDPOINT BARU UNTUK TRAINING ---
+@app.route('/train_model', methods=['GET'])
+def train_model_endpoint():
+    # Endpoint ini secara manual memicu proses training dan evaluasi.
+    print("[INFO] Memulai proses training model...")
+    try:
+        # Pemanggilan fungsi train_and_evaluate() ada di sini.
+        # Di dalam fungsi inilah (di file face_data.py) proses
+        # cross-validation yang Anda butuhkan dijalankan.
+        metrics = train_and_evaluate()
+        print("[SUCCESS] Model berhasil di-train ulang.")
+        return jsonify({'success': True, 'message': 'Model berhasil di-train ulang.', 'metrics': metrics})
+    except Exception as e:
+        print(f"[FATAL] Gagal saat training model: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
+    # Endpoint ini untuk mencari foto, menggunakan model yang sudah di-train.
     print("\n[INFO] Memulai /find_my_photos...")
     image = request.files.get('image')
     if not image: return jsonify({'success': False, 'error': 'image tidak ada'}), 400
-
-    tmp_path = 'tmp_find.jpg'
-    image.save(tmp_path)
-    client_face_gray = detect_and_crop(tmp_path)
-    os.remove(tmp_path)
-
-    if client_face_gray is None:
-        return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi pada gambar yang di-upload'}), 400
-
+    tmp_path = 'tmp_find.jpg'; image.save(tmp_path)
+    client_face_gray = detect_and_crop(tmp_path); os.remove(tmp_path)
+    if client_face_gray is None: return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
+    
     model, label_map = load_model_and_labels()
     if model is None: return jsonify({'success': False, 'error': 'Model belum ada'}), 400
-
+    
     label, confidence = model.predict(client_face_gray)
     client_user_id = label_map.get(label, 'unknown')
     print(f"[INFO] Wajah klien terverifikasi sebagai: '{client_user_id}' (Confidence: {confidence})")
-
-    # Nilai confidence LBPH: semakin kecil semakin mirip. 0 adalah cocok sempurna.
-    # Kita set ambang batas, misalnya di bawah 80 baru dianggap mungkin kenal.
-    if client_user_id == 'unknown' or confidence > 80: 
-        print("[INFO] Wajah klien tidak dikenali atau confidence terlalu rendah.")
-        return jsonify({'success': True, 'user_id': 'unknown', 'photo_urls': []})
-
+    
+    if client_user_id == 'unknown' or confidence > 80: return jsonify({'success': True, 'user_id': 'unknown', 'photo_urls': []})
+    
     matching_urls = []
     sessions_ref = db.collection('photo_sessions').stream()
-    
     for session in sessions_ref:
         session_data = session.to_dict()
         drive_link = session_data.get('driveLink')
         if not drive_link: continue
-        
         print(f"[INFO] Memeriksa sesi: '{session_data.get('title')}'")
         photo_urls_in_drive = fetch_images_from_drive_folder(drive_link)
-
         for photo_url in photo_urls_in_drive:
             try:
                 response = requests.get(photo_url, stream=True, timeout=15)
@@ -138,16 +145,12 @@ def find_my_photos():
                     if drive_photo_gray is not None:
                         predicted_label, pred_conf = model.predict(drive_photo_gray)
                         predicted_user_id = label_map.get(predicted_label)
-                        
-                        # Jika user cocok DAN confidence-nya cukup bagus (tidak terlalu tinggi)
                         if predicted_user_id == client_user_id and pred_conf < 80: 
                             print(f"[SUCCESS] COCOK! Foto {photo_url.split('&id=')[1]} adalah milik '{client_user_id}' (Conf: {pred_conf})")
                             matching_urls.append(photo_url)
             except Exception as e:
                 print(f"[ERROR] Gagal memproses foto dari drive {photo_url}: {e}")
-        
         if os.path.exists("temp_drive_photo.jpg"): os.remove("temp_drive_photo.jpg")
-
     return jsonify({'success': True, 'user_id': client_user_id, 'photo_urls': matching_urls})
 
 # --- Menjalankan Server ---
