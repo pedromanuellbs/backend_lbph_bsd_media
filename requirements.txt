@@ -1,4 +1,3 @@
-# requirements.txt (Versi Ringan)
 flask
 opencv-python
 opencv-contrib-python
