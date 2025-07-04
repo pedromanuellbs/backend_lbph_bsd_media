@@ -1,13 +1,13 @@
 flask
-opencv-python
-opencv-contrib-python
-numpy
+# opencv-python
+# opencv-contrib-python
+# numpy
 
-facenet-pytorch
-torch
-torchvision
+# facenet-pytorch
+# torch
+# torchvision
 
-requests
+# requests
 
-scikit-learn
-firebase-admin
+# scikit-learn
+# firebase-admin
