@@ -163,9 +163,13 @@ def verify_face():
     label, conf = model.predict(gray)
     return jsonify({ 'success': True, 'user_id': lblmap.get(label, 'unknown'), 'confidence': float(conf) })
 
+# Ganti fungsi find_my_photos yang lama dengan yang ini
+
+# Ganti fungsi find_my_photos yang lama dengan yang ini
+
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
-    print("\n===== MULAI find_my_photos =====")
+    print("\n===== MULAI find_my_photos (VERSI RINGAN) =====")
     image = request.files.get('image')
 
     if not image:
@@ -177,23 +181,24 @@ def find_my_photos():
     os.remove(tmp_path)
 
     if client_face_gray is None:
-        print("[DEBUG] GAGAL: Wajah klien tidak terdeteksi dari gambar upload.")
+        print("[DEBUG] GAGAL: Wajah klien tidak terdeteksi.")
         return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi pada gambar yang di-upload'}), 400
 
     model, label_map = load_model_and_labels()
     if model is None:
-        print("[DEBUG] GAGAL: Model tidak ditemukan.")
-        return jsonify({'success': False, 'error': 'Model belum ada, tidak bisa melakukan pencocokan'}), 400
+        return jsonify({'success': False, 'error': 'Model belum ada'}), 400
 
     label, confidence = model.predict(client_face_gray)
     client_user_id = label_map.get(label, 'unknown')
-    print(f"[DEBUG] Wajah klien terverifikasi sebagai user_id: '{client_user_id}' dengan confidence: {confidence}")
+    print(f"[DEBUG] Wajah klien terverifikasi sebagai user_id: '{client_user_id}'")
 
     if client_user_id == 'unknown':
         return jsonify({'success': True, 'user_id': 'unknown', 'photo_urls': []})
 
     matching_urls = []
-    sessions_ref = db.collection('photo_sessions').stream()
+    
+    # UBAHAN 1: Ambil hanya 1 sesi foto terbaru untuk meringankan beban
+    sessions_ref = db.collection('photo_sessions').order_by('createdAt', direction=firestore.Query.DESCENDING).limit(1).stream()
     
     for session in sessions_ref:
         session_data = session.to_dict()
@@ -205,7 +210,12 @@ def find_my_photos():
         photo_urls_in_drive = fetch_images_from_drive_folder(drive_link)
         print(f"[DEBUG] Ditemukan {len(photo_urls_in_drive)} foto di Google Drive.")
 
-        for photo_url in photo_urls_in_drive:
+        # UBAHAN 2: Proses maksimal 5 foto pertama saja per sesi
+        for i, photo_url in enumerate(photo_urls_in_drive):
+            if i >= 5:
+                print("[DEBUG] -- Mencapai batas 5 foto, berhenti memeriksa sesi ini.")
+                break
+            
             try:
                 print(f"[DEBUG] -- Memproses foto: {photo_url.split('&id=')[1]}")
                 response = requests.get(photo_url, stream=True, timeout=15)
@@ -215,18 +225,16 @@ def find_my_photos():
 
                     drive_photo_gray = detect_and_crop("temp_drive_photo.jpg")
                     if drive_photo_gray is not None:
-                        print(f"[DEBUG] -- Wajah TERDETEKSI di foto Drive.")
-                        predicted_label, pred_confidence = model.predict(drive_photo_gray)
+                        predicted_label, _ = model.predict(drive_photo_gray)
                         predicted_user_id = label_map.get(predicted_label)
-                        print(f"[DEBUG] -- Hasil prediksi: user_id '{predicted_user_id}' (Confidence: {pred_confidence})")
                         
                         if predicted_user_id == client_user_id:
                             print(f"[DEBUG] -- >>> COCOK! Foto ini adalah milik '{client_user_id}'")
                             matching_urls.append(photo_url)
                         else:
-                            print(f"[DEBUG] -- TIDAK COCOK. Prediksi '{predicted_user_id}' != Target '{client_user_id}'")
+                            print(f"[DEBUG] -- TIDAK COCOK.")
                     else:
-                        print(f"[DEBUG] -- Wajah TIDAK terdeteksi di foto Drive.")
+                        print(f"[DEBUG] -- Wajah TIDAK terdeteksi.")
             except Exception as e:
                 print(f"[DEBUG] -- ERROR saat memproses foto dari drive {photo_url}: {e}")
         
