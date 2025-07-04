@@ -74,7 +74,6 @@ def home():
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
-    # ... (Fungsi ini tidak diubah)
     user_id = request.form.get('user_id')
     image = request.files.get('image')
     if not user_id or not image: return jsonify({'success': False, 'error': 'user_id atau image tidak ada'}), 400
@@ -113,7 +112,9 @@ def find_my_photos():
     client_user_id = label_map.get(label, 'unknown')
     print(f"[INFO] Wajah klien terverifikasi sebagai: '{client_user_id}' (Confidence: {confidence})")
 
-    if client_user_id == 'unknown' or confidence > 80: # Tambahkan ambang batas confidence
+    # Nilai confidence LBPH: semakin kecil semakin mirip. 0 adalah cocok sempurna.
+    # Kita set ambang batas, misalnya di bawah 80 baru dianggap mungkin kenal.
+    if client_user_id == 'unknown' or confidence > 80: 
         print("[INFO] Wajah klien tidak dikenali atau confidence terlalu rendah.")
         return jsonify({'success': True, 'user_id': 'unknown', 'photo_urls': []})
 
@@ -137,7 +138,9 @@ def find_my_photos():
                     if drive_photo_gray is not None:
                         predicted_label, pred_conf = model.predict(drive_photo_gray)
                         predicted_user_id = label_map.get(predicted_label)
-                        if predicted_user_id == client_user_id and pred_conf < 80: # Tambahkan ambang batas
+                        
+                        # Jika user cocok DAN confidence-nya cukup bagus (tidak terlalu tinggi)
+                        if predicted_user_id == client_user_id and pred_conf < 80: 
                             print(f"[SUCCESS] COCOK! Foto {photo_url.split('&id=')[1]} adalah milik '{client_user_id}' (Conf: {pred_conf})")
                             matching_urls.append(photo_url)
             except Exception as e:
