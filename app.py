@@ -203,5 +203,15 @@ def debug_ls():
             result[folder] = str(e)
     return jsonify(result)
 
+
+@app.route('/debug_ls2')
+def debug_ls2():
+    return jsonify({
+        '.': os.listdir('.'),
+        'faces/user123': os.listdir('faces/user123'),
+        'faces/user123_test': os.listdir('faces/user123_test'),
+    })
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000)
