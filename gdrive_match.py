@@ -56,6 +56,15 @@ def download_drive_photo(file_id):
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     return img
 
+def list_photo_links(folder_id):
+    service = get_drive_service()
+    results = service.files().list(
+        q=f"'{folder_id}' in parents and trashed = false and mimeType contains 'image/'",
+        pageSize=1000,
+        fields="files(id, name, webViewLink, thumbnailLink)").execute()
+    return results.get('files', [])
+
+
 def detect_and_crop_face(img):
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     faces = mtcnn(rgb)
@@ -72,29 +81,44 @@ def detect_and_crop_face(img):
 def is_face_match(face_img, target_img, lbph_model, threshold=70):
     face1 = detect_and_crop_face(face_img)
     face2 = detect_and_crop_face(target_img)
+    print("Detect face user:", face1 is not None, "Detect face target:", face2 is not None)
     if face1 is None or face2 is None:
         return False
     gray1 = cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
     label, conf = lbph_model.predict(gray2)
+    print("LBPH conf:", conf)
     return conf < threshold
+
 
 def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
     user_img = cv2.imread(user_face_path)
-    photos = list_photos(folder_id)
+    print("Loaded user image:", user_img.shape if user_img is not None else None)
+    photos = list_photo_links(folder_id)
+    print(f"Processing folder: {folder_id}, total photos: {len(photos)}")
     matched = []
     for photo in photos:
         try:
+            print("Proses:", photo['name'])
             img = download_drive_photo(photo['id'])
+            print("Downloaded shape:", img.shape if img is not None else None)
+            if img is None:
+                print("Download failed, skip")
+                continue
             if is_face_match(user_img, img, lbph_model, threshold):
+                print("MATCH:", photo['name'])
                 matched.append({
                     'name': photo['name'],
                     'webViewLink': photo['webViewLink'],
                     'thumbnailLink': photo['thumbnailLink'],
                 })
         except Exception as e:
-            print(f"Error checking photo {photo['name']}: {e}")
+            print(f"Error matching photo {photo['name']}: {e}")
+    print("TOTAL MATCHED:", len(matched))
     return matched
+
+
+
 
 def find_all_matching_photos(user_face_path, all_folder_ids, lbph_model, threshold=70):
     all_matches = []
