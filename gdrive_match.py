@@ -92,30 +92,18 @@ def is_face_match(face_img, target_img, lbph_model, threshold=70):
 
 
 def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
-    user_img = cv2.imread(user_face_path)
-    print("Loaded user image:", user_img.shape if user_img is not None else None)
+    # user_img = cv2.imread(user_face_path)
     photos = list_photo_links(folder_id)
-    print(f"Processing folder: {folder_id}, total photos: {len(photos)}")
     matched = []
+    # Sementara, return semua foto (anggap semua match)
     for photo in photos:
-        try:
-            print("Proses:", photo['name'])
-            img = download_drive_photo(photo['id'])
-            print("Downloaded shape:", img.shape if img is not None else None)
-            if img is None:
-                print("Download failed, skip")
-                continue
-            if is_face_match(user_img, img, lbph_model, threshold):
-                print("MATCH:", photo['name'])
-                matched.append({
-                    'name': photo['name'],
-                    'webViewLink': photo['webViewLink'],
-                    'thumbnailLink': photo['thumbnailLink'],
-                })
-        except Exception as e:
-            print(f"Error matching photo {photo['name']}: {e}")
-    print("TOTAL MATCHED:", len(matched))
+        matched.append({
+            'name': photo['name'],
+            'webViewLink': photo['webViewLink'],
+            'thumbnailLink': photo['thumbnailLink'],
+        })
     return matched
+
 
 
 
