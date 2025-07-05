@@ -32,6 +32,7 @@ if not firebase_admin._apps:
 # Fungsi helper untuk upload file ke Firebase Storage
 def upload_to_firebase(local_file, user_id, filename):
     """Upload file ke Firebase Storage dan return URL download-nya"""
+    bucket = storage.bucket()  # <--- Tambahin baris ini!
     blob = bucket.blob(f"face-dataset/{user_id}/{filename}")
     blob.upload_from_filename(local_file)
     blob.make_public()  # Atur permission sesuai kebutuhan
@@ -187,7 +188,7 @@ def find_my_photos():
         return jsonify({'success': True, 'matched_photos': matches})
     except Exception as e:
         print("===== ERROR TRACEBACK =====")
-        print(traceback.format_exc())   # <--- Cetak detail error ke deploy logs!
+        print(traceback.format_exc())  # Cetak error lengkap ke log!
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
