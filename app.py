@@ -35,7 +35,7 @@ except Exception as e:
 # --- Konstanta ---
 DRIVE_API_KEY = "AIzaSyC_vPd6yPwYQ60Pn-tuR3Nly_7mgXZcxGk"
 
-# --- Helper Functions (Tidak ada perubahan) ---
+# --- Helper Functions ---
 def load_model_and_labels():
     if not os.path.exists(MODEL_PATH) or not os.path.exists(LABEL_MAP):
         return None, {}
@@ -54,6 +54,7 @@ def fetch_images_from_drive_folder(folder_url):
     if '/d/' in folder_url: folder_id = folder_url.split('/d/')[1].split('/')[0]
     elif '/folders/' in folder_url: folder_id = folder_url.split('/folders/')[1].split('/')[0]
     if not folder_id: return []
+    
     api_url = "https://www.googleapis.com/drive/v3/files"
     params = {'q': f"'{folder_id}' in parents and mimeType contains 'image/'", 'fields': 'files(id)', 'key': DRIVE_API_KEY, 'pageSize': 100}
     try:
@@ -73,7 +74,8 @@ def home():
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
-    # Endpoint ini HANYA untuk menyimpan gambar wajah baru dengan cepat.
+    # --- UBAHAN DI SINI ---
+    # Logika training yang berat dihapus dari sini
     user_id = request.form.get('user_id')
     image = request.files.get('image')
     if not user_id or not image: return jsonify({'success': False, 'error': 'user_id atau image tidak ada'}), 400
@@ -89,18 +91,16 @@ def register_face():
     
     cv2.imwrite(raw_path, cropped)
     
+    # train_and_evaluate() # <-- BARIS INI DIHAPUS/DIKOMENTARI
+    
     print(f"Wajah untuk user '{user_id}' berhasil disimpan. Jalankan /train_model untuk melatih ulang.")
     return jsonify({'success': True, 'message': 'Wajah berhasil disimpan. Model perlu di-train ulang secara manual.'})
 
 # --- ENDPOINT BARU UNTUK TRAINING ---
 @app.route('/train_model', methods=['GET'])
 def train_model_endpoint():
-    # Endpoint ini secara manual memicu proses training dan evaluasi.
     print("[INFO] Memulai proses training model...")
     try:
-        # Pemanggilan fungsi train_and_evaluate() ada di sini.
-        # Di dalam fungsi inilah (di file face_data.py) proses
-        # cross-validation yang Anda butuhkan dijalankan.
         metrics = train_and_evaluate()
         print("[SUCCESS] Model berhasil di-train ulang.")
         return jsonify({'success': True, 'message': 'Model berhasil di-train ulang.', 'metrics': metrics})
@@ -111,23 +111,19 @@ def train_model_endpoint():
 
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
-    # Endpoint ini untuk mencari foto, menggunakan model yang sudah di-train.
+    # ... (isi fungsi ini tetap sama)
     print("\n[INFO] Memulai /find_my_photos...")
     image = request.files.get('image')
     if not image: return jsonify({'success': False, 'error': 'image tidak ada'}), 400
     tmp_path = 'tmp_find.jpg'; image.save(tmp_path)
     client_face_gray = detect_and_crop(tmp_path); os.remove(tmp_path)
     if client_face_gray is None: return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
-    
     model, label_map = load_model_and_labels()
     if model is None: return jsonify({'success': False, 'error': 'Model belum ada'}), 400
-    
     label, confidence = model.predict(client_face_gray)
     client_user_id = label_map.get(label, 'unknown')
     print(f"[INFO] Wajah klien terverifikasi sebagai: '{client_user_id}' (Confidence: {confidence})")
-    
     if client_user_id == 'unknown' or confidence > 80: return jsonify({'success': True, 'user_id': 'unknown', 'photo_urls': []})
-    
     matching_urls = []
     sessions_ref = db.collection('photo_sessions').stream()
     for session in sessions_ref:
