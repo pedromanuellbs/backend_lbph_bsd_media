@@ -14,9 +14,13 @@ SERVICE_ACCOUNT_FILE = 'credentials.json'
 
 # Inisialisasi Firebase Admin sekali saja
 if not firebase_admin._apps:
+    # LOAD dari ENV jika di Railway, atau dari file lokal jika di local/dev
+    # Contoh jika pakai ENV:
+    import os, json
     cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
     cred = credentials.Certificate(cred_info)
-    firebase_admin.initialize_app(cred)
+    firebase_admin.initialize_app(cred, {'storageBucket': 'db-ta-bsd-media.firebasestorage.app'})
+    # Ganti FIREBASE_BUCKET_NAME sesuai project kamu
 
 # Inisialisasi MTCNN untuk deteksi wajah
 mtcnn = MTCNN(keep_all=False, device='cpu')
