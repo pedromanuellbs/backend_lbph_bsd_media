@@ -14,11 +14,10 @@ SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 # Inisialisasi MTCNN untuk deteksi wajah
 mtcnn = MTCNN(keep_all=False, device='cpu')
 
-# --- Inisialisasi Firebase Admin (Cek sudah inisialisasi atau belum) ---
-if not firebase_admin._apps:
-    cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
-    cred = firebase_admin.credentials.Certificate(cred_info)
-    firebase_admin.initialize_app(cred)
+# --- PERUBAHAN DI SINI: HAPUS BLOK INISIALISASI FIREBASE ---
+# Blok 'if not firebase_admin._apps:' telah dihapus dari sini
+# karena inisialisasi akan ditangani sepenuhnya oleh app.py
+# -------------------------------------------------------------
 
 def get_all_gdrive_folder_ids():
     db = firestore.client()
@@ -47,7 +46,7 @@ def list_photos(folder_id):
     return results.get('files', [])
 
 def list_photo_links(folder_id):
-    return list_photos(folder_id)  # Sederhanakan, biar jelas
+    return list_photos(folder_id)
 
 def download_drive_photo(file_id):
     service = get_drive_service()
@@ -89,7 +88,6 @@ def is_face_match(face_img, target_img, lbph_model, threshold=70):
     return conf < threshold
 
 def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
-    # Untuk tes, return semua foto dulu (anggap match)
     photos = list_photo_links(folder_id)
     matched = []
     for photo in photos:
