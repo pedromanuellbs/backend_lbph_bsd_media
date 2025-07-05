@@ -160,5 +160,38 @@ def get_face_image():
         return jsonify({'success': False, 'error': 'File tidak ditemukan'}), 404
     return send_from_directory(user_dir, filename)
 
+@app.route('/find_my_photos', methods=['POST'])
+def find_my_photos():
+    image = request.files.get('image')
+    if not image:
+        return jsonify({'success': False, 'error': 'image tidak ada di request'}), 400
+    # Simpan sementara
+    tmp = 'tmp.jpg'; image.save(tmp)
+    query_face = detect_and_crop(tmp); os.remove(tmp)
+    if query_face is None:
+        return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
+
+    # Load model dan label map
+    model, lblmap = load_model_and_labels()
+    if model is None:
+        return jsonify({'success': False, 'error': 'Model belum ada'}), 400
+
+    # Prediksi user_id
+    pred_label, conf = model.predict(query_face)
+    matched_user_id = lblmap[pred_label]
+
+    # Ambil semua foto milik matched_user_id
+    user_dir = os.path.join(FACES_DIR, matched_user_id)
+    files = [f for f in os.listdir(user_dir) if f.lower().endswith('.jpg')]
+
+    # Generate url publik dari Firebase Storage
+    urls = []
+    for fname in files:
+        url = f"https://firebasestorage.googleapis.com/v0/b/db-ta-bsd-media.appspot.com/o/face-dataset%2F{matched_user_id}%2F{fname}?alt=media"
+        urls.append(url)
+
+    return jsonify({'success': True, 'photo_urls': urls})
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000)
