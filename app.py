@@ -28,14 +28,6 @@ if not firebase_admin._apps:
 
 
 
-FIREBASE_BUCKET_NAME = "db-ta-bsd-media.firebasestorage.app"  # Pastikan ini sesuai dengan bucket Storage Firebase kamu
-
-# --- Load credential dari environment variable, bukan dari file ---
-cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
-cred = credentials.Certificate(cred_info)
-firebase_admin.initialize_app(cred, {'storageBucket': FIREBASE_BUCKET_NAME})
-bucket = storage.bucket()
-
 # Fungsi helper untuk upload file ke Firebase Storage
 def upload_to_firebase(local_file, user_id, filename):
     """Upload file ke Firebase Storage dan return URL download-nya"""
