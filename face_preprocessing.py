@@ -1,35 +1,33 @@
 from facenet_pytorch import MTCNN
 from PIL import Image
 import cv2
-import torch
 
-# Inisialisasi MTCNN untuk deteksi wajah
-# device='cpu' memastikan proses berjalan di CPU
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-mtcnn = MTCNN(image_size=96, margin=0, device=device)
+# Initialize MTCNN for face detection
+mtcnn = MTCNN(image_size=96, margin=0)
 
 def detect_and_crop(img_path):
     """
-    Deteksi satu wajah dari gambar menggunakan MTCNN, crop & resize ke 96x96,
-    konversi ke grayscale, dan kembalikan sebagai array NumPy.
-    Return None jika wajah tidak terdeteksi.
+    Detect a single face from the image at img_path, crop & resize to 96×96,
+    convert to grayscale, and return as a NumPy array.
+    Returns None if no face is detected.
     """
-    try:
-        # Buka gambar dan pastikan formatnya RGB
-        img = Image.open(img_path).convert("RGB")
-    except IOError:
-        print(f"Gagal membuka atau membaca file gambar: {img_path}")
-        return None
-
-    # Deteksi dan crop wajah; mengembalikan tensor
+    # Open image and ensure RGB
+    img = Image.open(img_path).convert("RGB")
+    # Detect and crop face; returns a tensor of shape (3,96,96) or (1,3,96,96)
     face = mtcnn(img)
-    
     if face is None:
         return None
 
-    # Konversi tensor PyTorch ke format gambar yang bisa diproses OpenCV
-    # (C,H,W) -> (H,W,C) -> BGR -> Grayscale
-    rgb_face = face.permute(1, 2, 0).mul(255).byte().cpu().numpy()
-    gray_face = cv2.cvtColor(rgb_face, cv2.COLOR_RGB2GRAY)
-    
-    return gray_face
+    # Remove batch dimension if present: (1,C,H,W) -> (C,H,W)
+    if hasattr(face, 'dim') and face.dim() == 4:
+        face = face.squeeze(0)
+
+    # If only 1 channel, expand to 3 channels
+    if face.size(0) == 1:
+        face = face.expand(3, -1, -1)
+
+    # Convert to H×W×C uint8 numpy
+    rgb = face.permute(1, 2, 0).mul(255).byte().cpu().numpy()
+    # Convert to grayscale
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+    return gray

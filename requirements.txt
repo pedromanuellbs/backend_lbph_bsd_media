@@ -2,9 +2,10 @@ flask
 opencv-python
 opencv-contrib-python
 numpy
-requests
-scikit-learn
-firebase-admin
+
 facenet-pytorch
 torch
 torchvision
+
+scikit-learn
+firebase-admin

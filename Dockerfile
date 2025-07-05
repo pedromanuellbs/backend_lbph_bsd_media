@@ -1,24 +1,31 @@
 # 1. Base image ringan
 FROM python:3.10-slim
 
-# 2. Install system deps untuk OpenCV headless
+# 2. Install system deps untuk OpenCV headless, Pillow, dan kebutuhan build
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    build-essential \
     libglib2.0-0 \
- && rm -rf /var/lib/apt/lists/*
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgl1-mesa-glx \
+    libjpeg-dev \
+  && rm -rf /var/lib/apt/lists/*
 
-# 3. Set direktori kerja
 WORKDIR /app
 
-# 4. Copy file requirements.txt dan install dependencies
+# 3. Copy file requirements.txt lebih dulu
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. Copy sisa kode aplikasi
+# 4. Copy kode aplikasi
 COPY . .
 
-# 6. Expose port yang digunakan oleh Railway
-EXPOSE 8080
+# 5. Upgrade pip, install CPU-only PyTorch & deps, lalu install sisa requirements
+RUN pip install --upgrade pip \
+  && pip install torch==2.2.2+cpu torchvision==0.17.2+cpu \
+       --extra-index-url https://download.pytorch.org/whl/cpu \
+  && pip install -r requirements.txt
 
-# 7. Jalankan aplikasi
+# 6. Expose port dan jalankan aplikasi
+EXPOSE 8000
 CMD ["python", "app.py"]
