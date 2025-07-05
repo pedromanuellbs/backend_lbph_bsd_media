@@ -192,6 +192,16 @@ def find_my_photos():
 
     return jsonify({'success': True, 'photo_urls': urls})
 
+# --- Debug Endpoint: Lihat Isi Folder Railway ---
+@app.route('/debug_ls', methods=['GET'])
+def debug_ls():
+    result = {}
+    for folder in ['faces', '.', 'models']:
+        try:
+            result[folder] = os.listdir(folder)
+        except Exception as e:
+            result[folder] = str(e)
+    return jsonify(result)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000)
