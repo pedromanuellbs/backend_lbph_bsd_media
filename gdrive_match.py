@@ -35,8 +35,7 @@ def get_all_gdrive_folder_ids():
 
 def get_drive_service():
     cred_json = os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']
-    info = json.loads(cred_json)
-    creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+    creds = service_account.Credentials.from_service_account_info(json.loads(cred_json), scopes=SCOPES)
     return build('drive', 'v3', credentials=creds)
 
 def list_photos(folder_id):
