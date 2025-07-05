@@ -1,6 +1,7 @@
 import os
 import traceback
 import json
+import traceback
 
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
@@ -168,21 +169,26 @@ def get_face_image():
 
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
-    image = request.files['image']
-    user_tmp = 'tmp_user.jpg'
-    image.save(user_tmp)
-    
-    # Load model LBPH yang sudah di-train
-    lbph_model = cv2.face.LBPHFaceRecognizer_create()
-    lbph_model.read('lbph_model.xml')
-    
-    # Ambil semua folder Google Drive fotografer (otomatis dari Firestore)
-    all_folder_ids = get_all_gdrive_folder_ids()
-    
-    # Proses pencarian wajah di semua folder
-    matches = find_all_matching_photos(user_tmp, all_folder_ids, lbph_model, threshold=70)
-    
-    return jsonify({'success': True, 'matched_photos': matches})
+    try:
+        image = request.files['image']
+        user_tmp = 'tmp_user.jpg'
+        image.save(user_tmp)
+        
+        # Load model LBPH yang sudah di-train
+        lbph_model = cv2.face.LBPHFaceRecognizer_create()
+        lbph_model.read('lbph_model.xml')
+        
+        # Ambil semua folder Google Drive fotografer (otomatis dari Firestore)
+        all_folder_ids = get_all_gdrive_folder_ids()
+        
+        # Proses pencarian wajah di semua folder
+        matches = find_all_matching_photos(user_tmp, all_folder_ids, lbph_model, threshold=70)
+        
+        return jsonify({'success': True, 'matched_photos': matches})
+    except Exception as e:
+        print("===== ERROR TRACEBACK =====")
+        print(traceback.format_exc())   # <--- Cetak detail error ke deploy logs!
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 
