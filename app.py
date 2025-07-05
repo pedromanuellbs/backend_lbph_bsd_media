@@ -185,11 +185,15 @@ def find_my_photos():
         all_folder_ids = get_all_gdrive_folder_ids()
         matches = find_all_matching_photos(user_tmp, all_folder_ids, lbph_model, threshold=70)
 
+        # Tambahkan log response di backend
+        print("RESPONSE:", matches)
+
         return jsonify({'success': True, 'matched_photos': matches})
     except Exception as e:
         print("===== ERROR TRACEBACK =====")
-        traceback.print_exc()  # Ini WAJIB supaya error detail muncul di Railway deploy logs
+        traceback.print_exc()  # WAJIB supaya error detail muncul di Railway deploy logs
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 
 
