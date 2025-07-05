@@ -69,7 +69,8 @@ def fetch_images_from_drive_folder(folder_url):
 # --- Routes ---
 @app.route("/", methods=["GET"])
 def home():
-    return "BSD Media Face Recognition Backend (MTCNN+LBPH) - Siap!"
+    # --- UBAHAN DI SINI ---
+    return "backend lbph mtcnn nya udah siap"
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
