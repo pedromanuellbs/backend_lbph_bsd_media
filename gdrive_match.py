@@ -18,6 +18,7 @@ mtcnn = MTCNN(keep_all=False, device='cpu')
 # Blok 'if not firebase_admin._apps:' telah dihapus dari sini
 # karena inisialisasi akan ditangani sepenuhnya oleh app.py
 # -------------------------------------------------------------
+#testing123
 
 def get_all_gdrive_folder_ids():
     db = firestore.client()
