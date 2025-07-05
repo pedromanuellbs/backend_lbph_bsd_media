@@ -10,10 +10,15 @@ import numpy as np
 from facenet_pytorch import MTCNN
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
-SERVICE_ACCOUNT_FILE = 'credentials.json'
 
 # Inisialisasi MTCNN untuk deteksi wajah
 mtcnn = MTCNN(keep_all=False, device='cpu')
+
+# --- Inisialisasi Firebase Admin (Cek sudah inisialisasi atau belum) ---
+if not firebase_admin._apps:
+    cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
+    cred = firebase_admin.credentials.Certificate(cred_info)
+    firebase_admin.initialize_app(cred)
 
 def get_all_gdrive_folder_ids():
     db = firestore.client()
@@ -29,8 +34,9 @@ def get_all_gdrive_folder_ids():
     return folder_ids
 
 def get_drive_service():
-    creds = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+    cred_json = os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']
+    info = json.loads(cred_json)
+    creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     return build('drive', 'v3', credentials=creds)
 
 def list_photos(folder_id):
@@ -40,6 +46,9 @@ def list_photos(folder_id):
         pageSize=1000,
         fields="files(id, name, webViewLink, thumbnailLink)").execute()
     return results.get('files', [])
+
+def list_photo_links(folder_id):
+    return list_photos(folder_id)  # Sederhanakan, biar jelas
 
 def download_drive_photo(file_id):
     service = get_drive_service()
@@ -51,19 +60,9 @@ def download_drive_photo(file_id):
     while not done:
         status, done = downloader.next_chunk()
     fh.seek(0)
-    # Convert to numpy array
     file_bytes = np.asarray(bytearray(fh.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     return img
-
-def list_photo_links(folder_id):
-    service = get_drive_service()
-    results = service.files().list(
-        q=f"'{folder_id}' in parents and trashed = false and mimeType contains 'image/'",
-        pageSize=1000,
-        fields="files(id, name, webViewLink, thumbnailLink)").execute()
-    return results.get('files', [])
-
 
 def detect_and_crop_face(img):
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -71,7 +70,7 @@ def detect_and_crop_face(img):
     if faces is None:
         return None
     if isinstance(faces, list) or len(faces.shape) == 4:
-        face = faces[0]  # Ambil wajah pertama
+        face = faces[0]
     else:
         face = faces
     face_np = face.permute(1,2,0).int().numpy()
@@ -90,12 +89,10 @@ def is_face_match(face_img, target_img, lbph_model, threshold=70):
     print("LBPH conf:", conf)
     return conf < threshold
 
-
 def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
-    # user_img = cv2.imread(user_face_path)
+    # Untuk tes, return semua foto dulu (anggap match)
     photos = list_photo_links(folder_id)
     matched = []
-    # Sementara, return semua foto (anggap semua match)
     for photo in photos:
         matched.append({
             'name': photo['name'],
@@ -103,10 +100,6 @@ def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
             'thumbnailLink': photo['thumbnailLink'],
         })
     return matched
-
-
-
-
 
 def find_all_matching_photos(user_face_path, all_folder_ids, lbph_model, threshold=70):
     all_matches = []
