@@ -4,23 +4,13 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import firestore, storage
 import cv2
 import numpy as np
 from facenet_pytorch import MTCNN
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 SERVICE_ACCOUNT_FILE = 'credentials.json'
-
-# Inisialisasi Firebase Admin sekali saja
-if not firebase_admin._apps:
-    # LOAD dari ENV jika di Railway, atau dari file lokal jika di local/dev
-    # Contoh jika pakai ENV:
-    import os, json
-    cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
-    cred = credentials.Certificate(cred_info)
-    firebase_admin.initialize_app(cred, {'storageBucket': 'db-ta-bsd-media.firebasestorage.app'})
-    # Ganti FIREBASE_BUCKET_NAME sesuai project kamu
 
 # Inisialisasi MTCNN untuk deteksi wajah
 mtcnn = MTCNN(keep_all=False, device='cpu')
