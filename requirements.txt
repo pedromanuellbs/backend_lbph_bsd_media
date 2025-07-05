@@ -6,8 +6,6 @@ numpy
 facenet-pytorch
 torch
 torchvision
-gunicorn
+
 scikit-learn
 firebase-admin
-google-api-python-client
-google-auth

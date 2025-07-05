@@ -3,23 +3,18 @@ import json
 import traceback
 
 import cv2
-import numpy as np # WAJIB ditambahkan untuk memproses gambar
 from flask import Flask, request, jsonify, send_from_directory
 
-# ----------------- PERUBAHAN DI SINI -----------------
-# Hapus import yang lama dan tidak akurat
-# from face_preprocessing import detect_and_crop 
-
-# GANTI dengan import fungsi deteksi wajah yang lebih kuat dari gdrive_match
-from gdrive_match import detect_and_crop_face as detect_and_crop
-# ----------------- AKHIR PERUBAHAN -----------------
-
+from face_preprocessing import detect_and_crop
 from face_data import train_and_evaluate
+
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP
 
 # --- Import dan setup Firebase Admin SDK ---
 import firebase_admin
 from firebase_admin import credentials, storage
+
+from gdrive_match import find_matching_photos
 
 from gdrive_match import find_all_matching_photos, get_all_gdrive_folder_ids
 
@@ -31,42 +26,56 @@ if not firebase_admin._apps:
         'storageBucket': 'db-ta-bsd-media.firebasestorage.app'
     })
 
+
+
+
 # Fungsi helper untuk upload file ke Firebase Storage
 def upload_to_firebase(local_file, user_id, filename):
-    bucket = storage.bucket()
+    """Upload file ke Firebase Storage dan return URL download-nya"""
+    bucket = storage.bucket()  # <--- Tambahin baris ini!
     blob = bucket.blob(f"face-dataset/{user_id}/{filename}")
     blob.upload_from_filename(local_file)
-    blob.make_public()
+    blob.make_public()  # Atur permission sesuai kebutuhan
     return blob.public_url
 
 app = Flask(__name__)
 
+# ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
 def handle_exceptions(e):
+    """Tangkap semua exception, print traceback, dan kembalikan JSON error."""
     tb = traceback.format_exc()
     print("===== Exception Traceback =====")
     print(tb)
     return jsonify({'success': False, 'error': str(e)}), 500
 
+# ─── Konstanta ─────────────────────────────────────────────────────────────
 FACES_DIR       = "faces"
 MODEL_PATH      = "lbph_model.xml"
 LABELS_MAP_PATH = "labels_map.txt"
 
+# Pastikan direktori dataset ada
 os.makedirs(FACES_DIR, exist_ok=True)
 
-def save_face_image(user_id: str, image_file_path: str):
+# ─── Helper Functions ──────────────────────────────────────────────────────
+def save_face_image(user_id: str, image_file) -> str:
     """
-    Simpan gambar yang SUDAH DICROP ke folder faces/<user_id>/N.jpg
+    Simpan gambar upload ke folder faces/<user_id>/N.jpg
+    Folder user_id akan otomatis dibuat kalau belum ada.
+    Mengembalikan path file yang disimpan.
     """
     user_dir = os.path.join(FACES_DIR, user_id)
-    os.makedirs(user_dir, exist_ok=True)
+    os.makedirs(user_dir, exist_ok=True)  # Otomatis bikin folder user baru
     count = len([f for f in os.listdir(user_dir) if f.lower().endswith('.jpg')])
     dst = os.path.join(user_dir, f"{count+1}.jpg")
-    # Pindahkan file yang sudah di-crop ke tujuan
-    os.rename(image_file_path, dst)
+    image_file.save(dst)
     return dst
-    
+
 def load_model_and_labels():
+    """
+    Load model LBPH dan label_map (lbl→user_id) dari filesystem.
+    Jika belum ada model, kembalikan (None, {}).
+    """
     if not os.path.exists(MODEL_PATH) or not os.path.exists(LABELS_MAP_PATH):
         return None, {}
 
@@ -81,80 +90,60 @@ def load_model_and_labels():
 
     return model, label_map
 
+# ─── Routes ────────────────────────────────────────────────────────────────
 @app.route("/", methods=["GET"])
 def home():
     return "BSD Media LBPH Backend siap!"
 
-# ----------------- PERUBAHAN UTAMA DI FUNGSI INI -----------------
 @app.route('/register_face', methods=['POST'])
 def register_face():
-    print("===== MULAI register_face (versi baru) =====")
+    # --- DEBUG LOGGING UNTUK TROUBLESHOOTING UPLOAD ---
+    print("===== MULAI register_face =====")
+    print("request.files:", request.files)
+    print("request.form:", request.form)
     user_id = request.form.get('user_id')
-    image_file = request.files.get('image')
+    image   = request.files.get('image')
+    if image:
+        print("image.filename:", image.filename)
+        print("image.content_length:", image.content_length)
+    else:
+        print("Tidak ada file 'image' di request!")
 
-    if not user_id or not image_file:
+    # Validasi awal
+    if not user_id or not image:
         return jsonify({'success': False, 'error': 'user_id atau image tidak ada di request'}), 400
 
-    # 1. Baca gambar yang di-upload ke memori
-    in_memory_file = image_file.read()
-    np_arr = np.frombuffer(in_memory_file, np.uint8)
-    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-    if img is None:
-        return jsonify({'success': False, 'error': 'Gagal membaca file gambar'}), 400
-
-    # 2. Gunakan fungsi deteksi MTCNN yang kuat
-    cropped = detect_and_crop(img)
-    
+    # Simpan gambar ke folder user baru/eksisting (folder otomatis dibuat jika belum ada)
+    raw_path = save_face_image(user_id, image)
+    cropped  = detect_and_crop(raw_path)
+    # --- Tambahkan pengecekan hasil crop ---
     if cropped is None or cropped.size == 0:
-        print("Gagal cropping dengan MTCNN!")
+        print("Gagal cropping/gambar kosong!")
         return jsonify({'success': False, 'error': 'Gagal cropping/gambar kosong!'}), 400
-
-    # 3. Simpan gambar yang SUDAH di-crop ke file sementara
-    temp_path = "temp_cropped.jpg"
-    cv2.imwrite(temp_path, cropped)
-
-    # 4. Pindahkan file sementara ke direktori user
-    final_path = save_face_image(user_id, temp_path)
+    cv2.imwrite(raw_path, cropped)
     
-    # 5. Upload ke Firebase Storage
-    firebase_url = upload_to_firebase(final_path, user_id, os.path.basename(final_path))
+    # --- Upload ke Firebase Storage ---
+    firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
 
-    # 6. Retrain model
+    # retrain dan simpan model
     metrics = train_and_evaluate()
     return jsonify({ 'success': True, 'metrics': metrics, 'firebase_image_url': firebase_url })
-# ----------------- AKHIR PERUBAHAN UTAMA -----------------
-
 
 @app.route('/verify_face', methods=['POST'])
 def verify_face():
     image = request.files.get('image')
     if not image:
         return jsonify({'success': False, 'error': 'image tidak ada di request'}), 400
-    
-    in_memory_file = image.read()
-    np_arr = np.frombuffer(in_memory_file, np.uint8)
-    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-
-    if img is None:
-        return jsonify({'success': False, 'error': 'Gagal membaca file gambar'}), 400
-
-    gray = detect_and_crop(img) # Gunakan detektor yang sudah diperbaiki
-    if gray is None:
-         return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
-    
-    # Convert ke grayscale untuk LBPH
-    if len(gray.shape) == 3:
-        gray = cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
-
+    # preprocess & predict
+    tmp = 'tmp.jpg'; image.save(tmp)
+    gray = detect_and_crop(tmp); os.remove(tmp)
     model, lblmap = load_model_and_labels()
     if model is None:
         return jsonify({'success': False, 'error': 'Model belum ada'}), 400
-
     label, conf = model.predict(gray)
     return jsonify({ 'success': True, 'user_id': lblmap[label], 'confidence': float(conf) })
 
-
+# --- Tambahan: Endpoint untuk melihat daftar file wajah user ---
 @app.route('/list_user_faces', methods=['GET'])
 def list_user_faces():
     user_id = request.args.get('user_id')
@@ -166,6 +155,7 @@ def list_user_faces():
     files = [f for f in os.listdir(user_dir) if f.lower().endswith('.jpg')]
     return jsonify({'success': True, 'files': files}), 200
 
+# --- Tambahan: Endpoint untuk download/lihat gambar user tertentu ---
 @app.route('/get_face_image', methods=['GET'])
 def get_face_image():
     user_id = request.args.get('user_id')
@@ -178,6 +168,8 @@ def get_face_image():
         return jsonify({'success': False, 'error': 'File tidak ditemukan'}), 404
     return send_from_directory(user_dir, filename)
 
+import traceback
+
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
     try:
@@ -185,20 +177,53 @@ def find_my_photos():
         user_tmp = 'tmp_user.jpg'
         image.save(user_tmp)
 
+        # Load model
         lbph_model = cv2.face.LBPHFaceRecognizer_create()
         lbph_model.read('lbph_model.xml')
 
+        # Get folder ids
         all_folder_ids = get_all_gdrive_folder_ids()
         matches = find_all_matching_photos(user_tmp, all_folder_ids, lbph_model, threshold=70)
 
+        # Tambahkan log response di backend
         print("RESPONSE:", matches)
 
         return jsonify({'success': True, 'matched_photos': matches})
     except Exception as e:
-        traceback.print_exc()
+        print("===== ERROR TRACEBACK =====")
+        traceback.print_exc()  # WAJIB supaya error detail muncul di Railway deploy logs
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# (Endpoint debug lainnya tidak perlu diubah)
+
+
+
+
+# --- Debug Endpoint: Lihat Isi Folder Railway ---
+@app.route('/debug_ls', methods=['GET'])
+def debug_ls():
+    result = {}
+    for folder in ['faces', '.', 'models']:
+        try:
+            result[folder] = os.listdir(folder)
+        except Exception as e:
+            result[folder] = str(e)
+    return jsonify(result)
+
+
+@app.route('/debug_ls2')
+def debug_ls2():
+    return jsonify({
+        '.': os.listdir('.'),
+        'faces/user123': os.listdir('faces/user123'),
+        'faces/user123_test': os.listdir('faces/user123_test'),
+    })
+
+@app.route('/debug_ls3')
+def debug_ls3():
+    return jsonify({
+        'root': os.listdir('.'),
+    })
+
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8000)))
+    app.run(host='0.0.0.0', port=8000)
