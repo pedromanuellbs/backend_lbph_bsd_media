@@ -36,8 +36,7 @@ def build_dataset():
 
 def cross_validate_lbph(X, y, n_splits=10):
     """
-    Fungsi ini tetap ada untuk laporan TA Anda, tapi tidak akan kita panggil
-    di server untuk mempercepat proses.
+    Lakukan stratified K-Fold CV, kembalikan metrik rata-rata.
     """
     n_samples = len(X)
     if n_samples < 2:
@@ -64,16 +63,16 @@ def cross_validate_lbph(X, y, n_splits=10):
 
 def train_and_evaluate():
     """
-    Bangun dataset, latih model final, dan simpan.
-    Cross-validation dinonaktifkan untuk mempercepat proses di server.
+    Bangun dataset, cross-validate, latih model final, dan simpan.
     """
     X, y, label_map = build_dataset()
     if len(X) == 0:
         raise RuntimeError("Tidak ada data wajah untuk dilatih")
 
-    # --- UBAHAN DI SINI ---
-    # metrics = cross_validate_lbph(X, y) # <-- Baris ini kita nonaktifkan
-    metrics = {"status": "Cross-validation dinonaktifkan di server."} # Beri pesan placeholder
+    # --- UBAHAN DI SINI: Cross-validation diaktifkan kembali ---
+    print("[INFO] Memulai cross-validation...")
+    metrics = cross_validate_lbph(X, y)
+    print(f"[INFO] Hasil Cross-validation: {metrics}")
 
     print("[INFO] Memulai training model final...")
     model = cv2.face.LBPHFaceRecognizer_create()
