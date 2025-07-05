@@ -212,6 +212,12 @@ def debug_ls2():
         'faces/user123_test': os.listdir('faces/user123_test'),
     })
 
+@app.route('/debug_ls3')
+def debug_ls3():
+    return jsonify({
+        'root': os.listdir('.'),
+    })
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000)
