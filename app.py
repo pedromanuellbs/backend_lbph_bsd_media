@@ -14,6 +14,13 @@ from config import FACES_DIR, MODEL_PATH, LABEL_MAP
 import firebase_admin
 from firebase_admin import credentials, storage
 
+from gdrive_match import find_matching_photos
+from gdrive_match import find_all_matching_photos, get_all_gdrive_folder_ids
+
+
+
+
+
 FIREBASE_BUCKET_NAME = "db-ta-bsd-media.firebasestorage.app"  # Pastikan ini sesuai dengan bucket Storage Firebase kamu
 
 # --- Load credential dari environment variable, bukan dari file ---
@@ -162,35 +169,23 @@ def get_face_image():
 
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
-    image = request.files.get('image')
-    if not image:
-        return jsonify({'success': False, 'error': 'image tidak ada di request'}), 400
-    # Simpan sementara
-    tmp = 'tmp.jpg'; image.save(tmp)
-    query_face = detect_and_crop(tmp); os.remove(tmp)
-    if query_face is None:
-        return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
+    image = request.files['image']
+    user_tmp = 'tmp_user.jpg'
+    image.save(user_tmp)
+    
+    # Load model LBPH yang sudah di-train
+    lbph_model = cv2.face.LBPHFaceRecognizer_create()
+    lbph_model.read('lbph_model.xml')
+    
+    # Ambil semua folder Google Drive fotografer (otomatis dari Firestore)
+    all_folder_ids = get_all_gdrive_folder_ids()
+    
+    # Proses pencarian wajah di semua folder
+    matches = find_all_matching_photos(user_tmp, all_folder_ids, lbph_model, threshold=70)
+    
+    return jsonify({'success': True, 'matched_photos': matches})
 
-    # Load model dan label map
-    model, lblmap = load_model_and_labels()
-    if model is None:
-        return jsonify({'success': False, 'error': 'Model belum ada'}), 400
 
-    # Prediksi user_id
-    pred_label, conf = model.predict(query_face)
-    matched_user_id = lblmap[pred_label]
-
-    # Ambil semua foto milik matched_user_id
-    user_dir = os.path.join(FACES_DIR, matched_user_id)
-    files = [f for f in os.listdir(user_dir) if f.lower().endswith('.jpg')]
-
-    # Generate url publik dari Firebase Storage
-    urls = []
-    for fname in files:
-        url = f"https://firebasestorage.googleapis.com/v0/b/db-ta-bsd-media.appspot.com/o/face-dataset%2F{matched_user_id}%2F{fname}?alt=media"
-        urls.append(url)
-
-    return jsonify({'success': True, 'photo_urls': urls})
 
 # --- Debug Endpoint: Lihat Isi Folder Railway ---
 @app.route('/debug_ls', methods=['GET'])
