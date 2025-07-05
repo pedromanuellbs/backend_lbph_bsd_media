@@ -4,7 +4,7 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
 import firebase_admin
-from firebase_admin import firestore, storage
+from firebase_admin import firestore
 import cv2
 import numpy as np
 from facenet_pytorch import MTCNN
