@@ -11,10 +11,30 @@ from facenet_pytorch import MTCNN
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
-# Inisialisasi MTCNN untuk deteksi wajah
-mtcnn = MTCNN(keep_all=False, device='cpu')
+# --- PERUBAHAN DI SINI: Terapkan Lazy Loading untuk MTCNN ---
 
-# --- Inisialisasi Firebase Admin (Cek sudah inisialisasi atau belum) ---
+# 1. Buat variabel global untuk menyimpan model, awalnya kosong
+mtcnn_model = None
+
+def get_mtcnn():
+    """
+    Fungsi ini akan memuat model MTCNN jika belum ada, 
+    dan mengembalikannya. Jika sudah ada, langsung kembalikan.
+    """
+    global mtcnn_model
+    if mtcnn_model is None:
+        print("Mulai memuat model MTCNN (pertama kali)...")
+        # Inisialisasi MTCNN hanya terjadi satu kali di sini
+        mtcnn_model = MTCNN(keep_all=False, device='cpu', post_process=False)
+        print("Model MTCNN berhasil dimuat.")
+    return mtcnn_model
+
+# Hapus inisialisasi MTCNN dari sini
+# mtcnn = MTCNN(keep_all=False, device='cpu') 
+
+# --- AKHIR PERUBAHAN ---
+
+
 if not firebase_admin._apps:
     cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
     cred = firebase_admin.credentials.Certificate(cred_info)
@@ -27,7 +47,6 @@ def get_all_gdrive_folder_ids():
     for doc in sessions:
         data = doc.to_dict()
         drive_link = data.get('driveLink', '')
-        # Ambil folder ID dari link Google Drive
         if 'folders/' in drive_link:
             folder_id = drive_link.split('folders/')[1].split('?')[0]
             folder_ids.append(folder_id)
@@ -47,7 +66,7 @@ def list_photos(folder_id):
     return results.get('files', [])
 
 def list_photo_links(folder_id):
-    return list_photos(folder_id)  # Sederhanakan, biar jelas
+    return list_photos(folder_id)
 
 def download_drive_photo(file_id):
     service = get_drive_service()
@@ -64,15 +83,18 @@ def download_drive_photo(file_id):
     return img
 
 def detect_and_crop_face(img):
+    # --- PERUBAHAN DI SINI: Panggil fungsi get_mtcnn ---
+    mtcnn = get_mtcnn()
+    # --- AKHIR PERUBAHAN ---
+    
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     faces = mtcnn(rgb)
     if faces is None:
         return None
-    if isinstance(faces, list) or len(faces.shape) == 4:
-        face = faces[0]
-    else:
-        face = faces
-    face_np = face.permute(1,2,0).int().numpy()
+    
+    # MTCNN dengan post_process=False mengembalikan tensor, perlu diolah manual
+    face = faces[0] 
+    face_np = face.permute(1, 2, 0).int().numpy()
     face_np = cv2.cvtColor(face_np, cv2.COLOR_RGB2BGR)
     return face_np
 
@@ -89,15 +111,21 @@ def is_face_match(face_img, target_img, lbph_model, threshold=70):
     return conf < threshold
 
 def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
-    # Untuk tes, return semua foto dulu (anggap match)
     photos = list_photo_links(folder_id)
     matched = []
+    user_face_img = cv2.imread(user_face_path)
+    if user_face_img is None:
+        return []
+
     for photo in photos:
-        matched.append({
-            'name': photo['name'],
-            'webViewLink': photo['webViewLink'],
-            'thumbnailLink': photo['thumbnailLink'],
-        })
+        print(f"Mencocokkan dengan {photo['name']}...")
+        target_img = download_drive_photo(photo['id'])
+        if target_img is not None and is_face_match(user_face_img, target_img, lbph_model, threshold):
+            matched.append({
+                'name': photo['name'],
+                'webViewLink': photo['webViewLink'],
+                'thumbnailLink': photo['thumbnailLink'],
+            })
     return matched
 
 def find_all_matching_photos(user_face_path, all_folder_ids, lbph_model, threshold=70):
