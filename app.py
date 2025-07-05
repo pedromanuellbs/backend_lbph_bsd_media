@@ -21,6 +21,7 @@ from gdrive_match import find_all_matching_photos, get_all_gdrive_folder_ids
 
 
 
+
 FIREBASE_BUCKET_NAME = "db-ta-bsd-media.firebasestorage.app"  # Pastikan ini sesuai dengan bucket Storage Firebase kamu
 
 # --- Load credential dari environment variable, bukan dari file ---
