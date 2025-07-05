@@ -17,7 +17,13 @@ from firebase_admin import credentials, storage
 from gdrive_match import find_matching_photos
 from gdrive_match import find_all_matching_photos, get_all_gdrive_folder_ids
 
-
+if not firebase_admin._apps:
+    import os, json
+    cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
+    cred = credentials.Certificate(cred_info)
+    firebase_admin.initialize_app(cred, {
+        'storageBucket': 'db-ta-bsd-media.firebasestorage.app'
+    })
 
 
 
