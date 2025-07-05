@@ -1,3 +1,4 @@
+import os
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
@@ -12,7 +13,8 @@ SERVICE_ACCOUNT_FILE = 'credentials.json'
 
 # Inisialisasi Firebase Admin sekali saja
 if not firebase_admin._apps:
-    cred = credentials.Certificate("db-ta-bsd-media-firebase-adminsdk-fbsvc-b70eb2f920.json")  # GANTI dengan file json kamu!
+    cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
+    cred = credentials.Certificate(cred_info)
     firebase_admin.initialize_app(cred)
 
 # Inisialisasi MTCNN untuk deteksi wajah
