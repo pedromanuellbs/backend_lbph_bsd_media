@@ -5,6 +5,7 @@ import requests
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
 
+# Pastikan import ini sesuai dengan file Anda
 from face_preprocessing import detect_and_crop
 from face_data import train_and_evaluate
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP
@@ -69,12 +70,11 @@ def fetch_images_from_drive_folder(folder_url):
 # --- Routes ---
 @app.route("/", methods=["GET"])
 def home():
-    # --- UBAHAN DI SINI ---
-    return "backend lbph mtcnn nya udah siap"
+    return "BSD Media LBPH Backend (Haar Cascade Version) - Siap!"
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
-    # --- UBAHAN DI SINI: Proses training dikembalikan ke endpoint ini ---
+    # Endpoint ini HANYA untuk menyimpan gambar wajah baru dengan cepat.
     user_id = request.form.get('user_id')
     image = request.files.get('image')
     if not user_id or not image: return jsonify({'success': False, 'error': 'user_id atau image tidak ada'}), 400
@@ -90,13 +90,26 @@ def register_face():
     
     cv2.imwrite(raw_path, cropped)
     
-    print("[INFO] Memulai training dan evaluasi model...")
-    metrics = train_and_evaluate()
-    
-    return jsonify({'success': True, 'message': 'Wajah berhasil diregistrasi dan model di-train ulang.', 'metrics': metrics})
+    print(f"Wajah untuk user '{user_id}' berhasil disimpan. Jalankan /train_model untuk melatih ulang.")
+    return jsonify({'success': True, 'message': 'Wajah berhasil disimpan. Model perlu di-train ulang secara manual.'})
+
+# --- ENDPOINT BARU UNTUK TRAINING ---
+@app.route('/train_model', methods=['GET'])
+def train_model_endpoint():
+    # Endpoint ini secara manual memicu proses training yang sudah diringankan.
+    print("[INFO] Memulai proses training model...")
+    try:
+        metrics = train_and_evaluate()
+        print("[SUCCESS] Model berhasil di-train ulang.")
+        return jsonify({'success': True, 'message': 'Model berhasil di-train ulang.', 'metrics': metrics})
+    except Exception as e:
+        print(f"[FATAL] Gagal saat training model: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
+    # Endpoint ini untuk mencari foto, menggunakan model yang sudah di-train.
     print("\n[INFO] Memulai /find_my_photos...")
     image = request.files.get('image')
     if not image: return jsonify({'success': False, 'error': 'image tidak ada'}), 400
@@ -111,13 +124,10 @@ def find_my_photos():
     client_user_id = label_map.get(label, 'unknown')
     print(f"[INFO] Wajah klien terverifikasi sebagai: '{client_user_id}' (Confidence: {confidence})")
     
-    if client_user_id == 'unknown' or confidence > 50: # Ambang batas bisa disesuaikan
-        print("[INFO] Wajah klien tidak dikenali atau confidence terlalu rendah.")
-        return jsonify({'success': True, 'user_id': 'unknown', 'photo_urls': []})
-
+    if client_user_id == 'unknown' or confidence > 80: return jsonify({'success': True, 'user_id': 'unknown', 'photo_urls': []})
+    
     matching_urls = []
     sessions_ref = db.collection('photo_sessions').stream()
-    
     for session in sessions_ref:
         session_data = session.to_dict()
         drive_link = session_data.get('driveLink')
@@ -133,7 +143,7 @@ def find_my_photos():
                     if drive_photo_gray is not None:
                         predicted_label, pred_conf = model.predict(drive_photo_gray)
                         predicted_user_id = label_map.get(predicted_label)
-                        if predicted_user_id == client_user_id and pred_conf < 50: # Ambang batas disesuaikan
+                        if predicted_user_id == client_user_id and pred_conf < 80: 
                             print(f"[SUCCESS] COCOK! Foto {photo_url.split('&id=')[1]} adalah milik '{client_user_id}' (Conf: {pred_conf})")
                             matching_urls.append(photo_url)
             except Exception as e:
