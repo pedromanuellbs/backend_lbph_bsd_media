@@ -100,7 +100,7 @@ def register_face():
         return jsonify({'success': False, 'error': 'Gagal cropping/gambar kosong!'}), 400
 
     # jika perlu, convert array dtype sebelum penyimpanan atau pengolahan lebih lanjut
-    cropped = cropped.astype(np.float32)
+    # cropped = cropped.astype(np.float32)
     cv2.imwrite(raw_path, cropped)
 
     # Upload ke Firebase Storage
