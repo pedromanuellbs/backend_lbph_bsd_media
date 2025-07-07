@@ -6,6 +6,8 @@ import numpy as np
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
 
+#testing1234
+
 from face_preprocessing import detect_and_crop
 from face_data import train_and_evaluate
 
@@ -105,7 +107,7 @@ def register_face():
     firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
 
     # Retrain dan simpan model
-    metrics = train_and_evaluate()
+    # metrics = train_and_evaluate()
     
     # Blok ini akan membersihkan semua tipe data NumPy agar aman untuk JSON
     cleaned_metrics = {}
