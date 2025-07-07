@@ -176,6 +176,10 @@ import traceback
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
     try:
+         # ===== TAMBAHKAN PRINT INI SEBAGAI PENANDA =====
+        print("\n===== Endpoint /find_my_photos DIPANGGIL (VERSI KODE TERBARU) =====\n")
+        # ===============================================
+
         if 'image' not in request.files:
             return jsonify({'success': False, 'error': 'File gambar tidak ditemukan'}), 400
 
