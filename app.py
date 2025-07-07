@@ -197,8 +197,8 @@ def find_my_photos():
         # -----------------------------------------
 
         # Load model
-        lbph_model = cv2.face.LBPHFaceRecognizer_create()
-        lbph_model.read('lbph_model.xml')
+        # lbph_model = cv2.face.LBPHFaceRecognizer_create()
+        # lbph_model.read('lbph_model.xml')
 
         # Get folder ids
         all_folder_ids = get_all_gdrive_folder_ids()
