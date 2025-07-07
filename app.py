@@ -17,7 +17,8 @@ from firebase_admin import credentials, storage
 
 from gdrive_match import find_matching_photos
 
-from gdrive_match import find_all_matching_photos, get_all_gdrive_folder_ids
+from gdrive_match import find_all_matching_photos_for_user, get_all_gdrive_folder_ids
+
 
 if not firebase_admin._apps:
     import os, json
