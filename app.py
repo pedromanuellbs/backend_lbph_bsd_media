@@ -186,6 +186,8 @@ def get_face_image():
 
 import traceback
 
+import traceback
+
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
     user_id = session.get('verified_user_id')
@@ -198,7 +200,9 @@ def find_my_photos():
         matches = find_all_matching_photos_for_user(user_id, all_folder_ids, lbph_model, threshold=70)
         return jsonify({'success': True, 'matched_photos': matches})
     except Exception as e:
+        traceback.print_exc()   # <== Ini WAJIB biar error muncul di Railway log
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 
 
