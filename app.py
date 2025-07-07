@@ -183,27 +183,5 @@ def find_my_photos():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/debug_ls', methods=['GET'])
-def debug_ls():
-    result = {}
-    for folder in ['faces', '.', 'models']:
-        try:
-            result[folder] = os.listdir(folder)
-        except Exception as e:
-            result[folder] = str(e)
-    return jsonify(result)
-
-@app.route('/debug_ls2')
-def debug_ls2():
-    return jsonify({
-        '.': os.listdir('.'),
-        'faces/user123': os.listdir('faces/user123'),
-        'faces/user123_test': os.listdir('faces/user123_test'),
-    })
-
-@app.route('/debug_ls3')
-def debug_ls3():
-    return jsonify({ 'root': os.listdir('.') })
-
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
