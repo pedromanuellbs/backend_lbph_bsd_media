@@ -2,7 +2,7 @@ import os
 import json
 import traceback
 
-import numpy as np  # added for dtype conversion
+import numpy as np
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
 
@@ -99,26 +99,33 @@ def register_face():
         print("Gagal cropping/gambar kosong!")
         return jsonify({'success': False, 'error': 'Gagal cropping/gambar kosong!'}), 400
 
-    # jika perlu, convert array dtype sebelum penyimpanan atau pengolahan lebih lanjut
-    # cropped = cropped.astype(np.float32)
     cv2.imwrite(raw_path, cropped)
 
     # Upload ke Firebase Storage
     firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
 
-    # retrain dan simpan model
+    # Retrain dan simpan model
     metrics = train_and_evaluate()
-    # Cast numpy types to Python native types untuk JSON encoding
-    metrics = {
-        k: (int(v) if isinstance(v, np.generic) else v)
-        for k, v in metrics.items()
-    }
+    
+    # Blok ini akan membersihkan semua tipe data NumPy agar aman untuk JSON
+    cleaned_metrics = {}
+    for key, value in metrics.items():
+        if isinstance(value, np.generic):
+            # Menggunakan .item() adalah cara paling aman untuk konversi
+            cleaned_metrics[key] = value.item()
+        elif isinstance(value, np.ndarray):
+            # Jika nilainya adalah array, ubah menjadi list
+            cleaned_metrics[key] = value.tolist()
+        else:
+            # Jika sudah tipe data standar, biarkan saja
+            cleaned_metrics[key] = value
 
     return jsonify({
         'success': True,
-        'metrics': metrics,
+        'metrics': cleaned_metrics,  # Gunakan dictionary yang sudah dibersihkan
         'firebase_image_url': firebase_url
     })
+
 
 @app.route('/verify_face', methods=['POST'])
 def verify_face():

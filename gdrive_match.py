@@ -14,12 +14,6 @@ SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 # Inisialisasi MTCNN untuk deteksi wajah
 mtcnn = MTCNN(keep_all=False, device='cpu')
 
-# --- PERUBAHAN DI SINI: HAPUS BLOK INISIALISASI FIREBASE ---
-# Blok 'if not firebase_admin._apps:' telah dihapus dari sini
-# karena inisialisasi akan ditangani sepenuhnya oleh app.py
-# -------------------------------------------------------------
-#testing123
-
 def get_all_gdrive_folder_ids():
     db = firestore.client()
     folder_ids = []
@@ -89,14 +83,43 @@ def is_face_match(face_img, target_img, lbph_model, threshold=70):
     return conf < threshold
 
 def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
+    # Baca gambar wajah user sekali saja di awal
+    user_face_img = cv2.imread(user_face_path)
+    if user_face_img is None:
+        print(f"Error: Tidak bisa membaca file wajah user di {user_face_path}")
+        return []
+
     photos = list_photo_links(folder_id)
     matched = []
+    
+    print(f"Mulai mencocokkan wajah dengan {len(photos)} foto di folder {folder_id}...")
+
     for photo in photos:
-        matched.append({
-            'name': photo['name'],
-            'webViewLink': photo['webViewLink'],
-            'thumbnailLink': photo['thumbnailLink'],
-        })
+        try:
+            # 1. Download foto dari Google Drive
+            print(f"-> Memproses {photo['name']} ({photo['id']})")
+            target_img = download_drive_photo(photo['id'])
+            
+            if target_img is None:
+                print(f"   Gagal download atau decode gambar {photo['name']}")
+                continue
+
+            # 2. Lakukan perbandingan wajah
+            if is_face_match(user_face_img, target_img, lbph_model, threshold):
+                print(f"   ✅ COCOK: {photo['name']}")
+                matched.append({
+                    'name': photo['name'],
+                    'webViewLink': photo['webViewLink'],
+                    'thumbnailLink': photo['thumbnailLink'],
+                })
+            else:
+                print(f"   ❌ Tidak Cocok: {photo['name']}")
+
+        except Exception as e:
+            print(f"Error saat memproses foto {photo.get('name', 'Unknown')}: {e}")
+            # Lanjutkan ke foto berikutnya jika ada error
+            continue
+            
     return matched
 
 def find_all_matching_photos(user_face_path, all_folder_ids, lbph_model, threshold=70):
