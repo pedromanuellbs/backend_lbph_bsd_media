@@ -88,16 +88,46 @@ def is_face_match(face_img, target_img, lbph_model, threshold=70):
     print("LBPH conf:", conf)
     return conf < threshold
 
+# Di file: gdrive_match.py
+
 def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
-    photos = list_photo_links(folder_id)
-    matched = []
-    for photo in photos:
-        matched.append({
-            'name': photo['name'],
-            'webViewLink': photo['webViewLink'],
-            'thumbnailLink': photo['thumbnailLink'],
-        })
-    return matched
+    # Membaca gambar wajah user sekali saja di awal
+    user_img = cv2.imread(user_face_path)
+    if user_img is None:
+        print(f"Error: Gagal membaca file wajah user di {user_face_path}")
+        return []
+
+    photos_in_folder = list_photo_links(folder_id)
+    matched_in_folder = []
+
+    print(f"Memeriksa {len(photos_in_folder)} foto di folder {folder_id}...")
+
+    for photo in photos_in_folder:
+        try:
+            print(f"  -> Memproses foto: {photo['name']} ({photo['id']})")
+            # 1. Download foto dari Google Drive
+            target_img = download_drive_photo(photo['id'])
+            if target_img is None:
+                continue
+
+            # 2. Lakukan perbandingan wajah
+            # Fungsi is_face_match dipanggil di sini!
+            if is_face_match(user_img, target_img, lbph_model, threshold):
+                print(f"    [COCOK] Wajah ditemukan di foto {photo['name']}")
+                # 3. Jika cocok, baru tambahkan ke daftar hasil
+                matched_in_folder.append({
+                    'name': photo['name'],
+                    'webViewLink': photo['webViewLink'],
+                    'thumbnailLink': photo['thumbnailLink'],
+                })
+            else:
+                print(f"    [TIDAK COCOK] Wajah tidak cocok di foto {photo['name']}")
+
+        except Exception as e:
+            print(f"    Error saat memproses foto {photo['name']}: {e}")
+            continue
+            
+    return matched_in_folder
 
 def find_all_matching_photos(user_face_path, all_folder_ids, lbph_model, threshold=70):
     all_matches = []
