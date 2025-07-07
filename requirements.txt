@@ -9,6 +9,3 @@ torchvision
 
 scikit-learn
 firebase-admin
-
-grpcio
-google-cloud-firestore
