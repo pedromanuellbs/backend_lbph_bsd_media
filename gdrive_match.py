@@ -88,6 +88,12 @@ def is_face_match(face_img, target_img, lbph_model, threshold=70):
     print("LBPH conf:", conf)
     return conf < threshold
 
+def ambil_crop_wajah_user(user_id):
+    user_dir = os.path.join('faces', user_id)
+    if not os.path.exists(user_dir):
+        return []
+    return glob.glob(os.path.join(user_dir, '*.jpg'))
+
 def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
     photos = list_photo_links(folder_id)
     matched = []
@@ -99,9 +105,16 @@ def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
         })
     return matched
 
-def find_all_matching_photos(user_face_path, all_folder_ids, lbph_model, threshold=70):
+def find_all_matching_photos_for_user(user_id, all_folder_ids, lbph_model, threshold=70):
+    user_face_samples = ambil_crop_wajah_user(user_id)
     all_matches = []
     for folder_id in all_folder_ids:
-        matches = find_matching_photos(user_face_path, folder_id, lbph_model, threshold)
-        all_matches.extend(matches)
+        photos = list_photo_links(folder_id)
+        for photo in photos:
+            img = download_drive_photo(photo['id'])
+            for face_path in user_face_samples:
+                user_face = cv2.imread(face_path)
+                if is_face_match(user_face, img, lbph_model, threshold):
+                    all_matches.append(photo)
+                    break
     return all_matches

@@ -1,13 +1,14 @@
 import os
 import json
 import traceback
+import glob
 
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
 
 from face_preprocessing import detect_and_crop
 from face_data import train_and_evaluate
-
+from gdrive_match import find_all_matching_photos_for_user
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP
 
 # --- Import dan setup Firebase Admin SDK ---
@@ -29,6 +30,7 @@ if not firebase_admin._apps:
 
 
 
+
 # Fungsi helper untuk upload file ke Firebase Storage
 def upload_to_firebase(local_file, user_id, filename):
     """Upload file ke Firebase Storage dan return URL download-nya"""
@@ -39,6 +41,7 @@ def upload_to_firebase(local_file, user_id, filename):
     return blob.public_url
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'default_dev_secret')
 
 # ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
@@ -131,17 +134,29 @@ def register_face():
 
 @app.route('/verify_face', methods=['POST'])
 def verify_face():
+    user_id = request.form.get('user_id')
     image = request.files.get('image')
-    if not image:
-        return jsonify({'success': False, 'error': 'image tidak ada di request'}), 400
-    # preprocess & predict
-    tmp = 'tmp.jpg'; image.save(tmp)
+    if not user_id or not image:
+        return jsonify({'success': False, 'error': 'user_id atau image tidak ada di request'}), 400
+
+    tmp = 'tmp_verify.jpg'; image.save(tmp)
     gray = detect_and_crop(tmp); os.remove(tmp)
+
     model, lblmap = load_model_and_labels()
-    if model is None:
+    if model is None or lblmap == {}:
         return jsonify({'success': False, 'error': 'Model belum ada'}), 400
+
+    labels_user = [lbl for lbl, uid in lblmap.items() if uid == user_id]
+    if not labels_user:
+        return jsonify({'success': False, 'error': 'User belum terdaftar'}), 400
+
     label, conf = model.predict(gray)
-    return jsonify({ 'success': True, 'user_id': lblmap[label], 'confidence': float(conf) })
+    if label in labels_user and conf < 70:
+        session['verified_user_id'] = user_id
+        return jsonify({'success': True, 'user_id': user_id, 'confidence': float(conf)})
+    else:
+        return jsonify({'success': False, 'error': 'Verifikasi gagal', 'confidence': float(conf)})
+
 
 # --- Tambahan: Endpoint untuk melihat daftar file wajah user ---
 @app.route('/list_user_faces', methods=['GET'])
@@ -172,28 +187,17 @@ import traceback
 
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
+    user_id = session.get('verified_user_id')
+    if not user_id:
+        return jsonify({'success': False, 'error': 'Belum verifikasi wajah'}), 403
     try:
-        image = request.files['image']
-        user_tmp = 'tmp_user.jpg'
-        image.save(user_tmp)
-
-        # Load model
         lbph_model = cv2.face.LBPHFaceRecognizer_create()
         lbph_model.read('lbph_model.xml')
-
-        # Get folder ids
         all_folder_ids = get_all_gdrive_folder_ids()
-        matches = find_all_matching_photos(user_tmp, all_folder_ids, lbph_model, threshold=70)
-
-        # Tambahkan log response di backend
-        print("RESPONSE:", matches)
-
+        matches = find_all_matching_photos_for_user(user_id, all_folder_ids, lbph_model, threshold=70)
         return jsonify({'success': True, 'matched_photos': matches})
     except Exception as e:
-        print("===== ERROR TRACEBACK =====")
-        traceback.print_exc()  # WAJIB supaya error detail muncul di Railway deploy logs
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 
 
@@ -227,3 +231,4 @@ def debug_ls3():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000)
+# app.secret_key = 'random_secret_key_boleh_ganti'
