@@ -90,17 +90,38 @@ def detect_and_crop_face(img):
     face_np = cv2.cvtColor(face_np, cv2.COLOR_RGB2BGR)
     return face_np
 
+# Di file: gdrive_match.py
+
 def is_face_match(face_img, target_img, lbph_model, threshold=70):
+    print("--- Memulai is_face_match ---") # Laporan awal
+    
+    # Deteksi wajah dari FOTO KLIEN yang di-upload
     face1 = detect_and_crop_face(face_img)
+    print("  > Deteksi wajah klien (face1):", "Berhasil" if face1 is not None else "Gagal")
+
+    # Deteksi wajah dari FOTO TARGET di Google Drive
     face2 = detect_and_crop_face(target_img)
-    print("Detect face user:", face1 is not None, "Detect face target:", face2 is not None)
+    print("  > Deteksi wajah target (face2):", "Berhasil" if face2 is not None else "Gagal")
+
     if face1 is None or face2 is None:
+        print("--- Selesai is_face_match (Salah satu wajah tidak terdeteksi) ---\n")
         return False
+
+    # Jika kedua wajah terdeteksi, lanjutkan ke perbandingan
     gray1 = cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
+    
+    # Lakukan prediksi untuk mendapatkan confidence score
     label, conf = lbph_model.predict(gray2)
-    print("LBPH conf:", conf)
-    return conf < threshold
+    
+    print(f"  > Skor Kemiripan (Confidence): {conf:.2f}") # Cetak skornya
+    print(f"  > Ambang Batas (Threshold): {threshold}") # Cetak threshold
+    
+    is_match = conf < threshold
+    print(f"  > Hasil Perbandingan: {'COCOK' if is_match else 'TIDAK COCOK'}")
+    print("--- Selesai is_face_match ---\n")
+    
+    return is_match
 
 # Di file: gdrive_match.py
 
