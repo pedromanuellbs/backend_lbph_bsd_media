@@ -49,6 +49,8 @@ def list_photos(folder_id):
 def list_photo_links(folder_id):
     return list_photos(folder_id)
 
+# Di file: gdrive_match.py
+
 def download_drive_photo(file_id):
     service = get_drive_service()
     request = service.files().get_media(fileId=file_id)
@@ -61,6 +63,18 @@ def download_drive_photo(file_id):
     fh.seek(0)
     file_bytes = np.asarray(bytearray(fh.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+    # --- TAMBAHAN SOLUSI DI SINI ---
+    # Jika gambar gagal di-decode (misal: file corrupt total)
+    if img is None:
+        return None
+    
+    # Konversi paksa gambar ke format standar 8-bit untuk menghindari error VDepth
+    # Ini akan "membersihkan" gambar sebelum diproses lebih lanjut.
+    if img.dtype != np.uint8:
+        img = cv2.convertScaleAbs(img)
+    # ---------------------------------
+
     return img
 
 def detect_and_crop_face(img):
