@@ -136,6 +136,8 @@ def register_face():
     metrics = train_and_evaluate()
     return jsonify({ 'success': True, 'metrics': metrics, 'firebase_image_url': firebase_url })
 
+# Di dalam file app.py
+
 @app.route('/verify_face', methods=['POST'])
 def verify_face():
     user_id = request.form.get('user_id')
@@ -144,24 +146,36 @@ def verify_face():
         return jsonify({'success': False, 'error': 'user_id atau image tidak ada di request'}), 400
 
     tmp = 'tmp_verify.jpg'; image.save(tmp)
-    gray = detect_and_crop(tmp); os.remove(tmp)
+    
+    # --- MODIFIKASI DIMULAI DARI SINI ---
+    
+    gray = detect_and_crop(tmp)
+    os.remove(tmp)
+
+    # TAMBAHKAN PENGECEKAN INI!
+    # Jika tidak ada wajah yang terdeteksi, 'gray' akan menjadi None.
+    if gray is None:
+        return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi pada gambar verifikasi.'}), 400
+
+    # --- AKHIR DARI MODIFIKASI ---
 
     model, lblmap = load_model_and_labels()
     if model is None or lblmap == {}:
-        return jsonify({'success': False, 'error': 'Model belum ada'}), 400
+        return jsonify({'success': False, 'error': 'Model belum ada atau gagal di-load'}), 500 # Beri error 500 agar jelas
 
     labels_user = [lbl for lbl, uid in lblmap.items() if uid == user_id]
     if not labels_user:
-        return jsonify({'success': False, 'error': 'User belum terdaftar'}), 400
+        return jsonify({'success': False, 'error': 'User belum terdaftar di model'}), 400
 
     label, conf = model.predict(gray)
+    
+    # ... sisa kodenya sama ...
     if label in labels_user and conf < 100:
         session['verified_user_id'] = user_id
         return jsonify({'success': True, 'user_id': user_id, 'confidence': float(conf)})
     else:
-        return jsonify({'success': False, 'error': 'Verifikasi gagal', 'confidence': float(conf)})
-
-
+        return jsonify({'success': False, 'error': 'Verifikasi gagal, wajah tidak cocok', 'confidence': float(conf)})
+    
 # --- Tambahan: Endpoint untuk melihat daftar file wajah user ---
 @app.route('/list_user_faces', methods=['GET'])
 def list_user_faces():
