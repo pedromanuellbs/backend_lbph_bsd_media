@@ -47,12 +47,7 @@ def list_photos(folder_id):
     return results.get('files', [])
 
 def list_photo_links(folder_id):
-    service = get_drive_service()
-    results = service.files().list(
-        q=f"'{folder_id}' in parents and trashed = false and mimeType contains 'image/'",
-        pageSize=1000,
-        fields="files(id, name, webViewLink, thumbnailLink)").execute()
-    return results.get('files', [])
+    return list_photos(folder_id)
 
 def download_drive_photo(file_id):
     service = get_drive_service()
@@ -71,50 +66,38 @@ def download_drive_photo(file_id):
 def detect_and_crop_face(img):
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     faces = mtcnn(rgb)
-    if faces is None: return None
-    face = faces[0] if isinstance(faces, list) or len(faces.shape) == 4 else faces
+    if faces is None:
+        return None
+    if isinstance(faces, list) or len(faces.shape) == 4:
+        face = faces[0]
+    else:
+        face = faces
     face_np = face.permute(1,2,0).int().numpy()
-    return cv2.cvtColor(face_np, cv2.COLOR_RGB2BGR)
+    face_np = cv2.cvtColor(face_np, cv2.COLOR_RGB2BGR)
+    return face_np
 
-# --- PERUBAHAN #1: Fungsi ini sekarang menerima wajah user yang sudah di-crop ---
-def is_face_match(cropped_user_face, target_img, lbph_model, threshold=70):
-    # Wajah user tidak perlu di-proses ulang
-    face1_gray = cv2.cvtColor(cropped_user_face, cv2.COLOR_BGR2GRAY)
-
-    # Hanya proses wajah dari foto target
+def is_face_match(face_img, target_img, lbph_model, threshold=70):
+    face1 = detect_and_crop_face(face_img)
     face2 = detect_and_crop_face(target_img)
-    if face2 is None: return False
-    
-    face2_gray = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
-    
-    label, conf = lbph_model.predict(face2_gray)
-    print(f"Comparing with registered face. LBPH confidence: {conf}")
+    print("Detect face user:", face1 is not None, "Detect face target:", face2 is not None)
+    if face1 is None or face2 is None:
+        return False
+    gray1 = cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
+    label, conf = lbph_model.predict(gray2)
+    print("LBPH conf:", conf)
     return conf < threshold
 
-# --- PERUBAHAN #2: Proses wajah user satu kali saja sebelum loop ---
 def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
     photos = list_photo_links(folder_id)
     matched = []
-    
-    # Baca dan proses wajah pengguna HANYA SATU KALI di sini
-    user_face_img = cv2.imread(user_face_path)
-    if user_face_img is None: return []
-    cropped_user_face = detect_and_crop_face(user_face_img)
-    if cropped_user_face is None: return []
-
-    # Loop melalui foto-foto dari Google Drive
     for photo in photos:
-        print(f"Mencocokkan dengan {photo['name']}...")
-        target_img = download_drive_photo(photo['id'])
-        # Kirim wajah user yang sudah di-crop ke fungsi is_face_match
-        if target_img is not None and is_face_match(cropped_user_face, target_img, lbph_model, threshold):
-            matched.append({
-                'name': photo['name'],
-                'webViewLink': photo['webViewLink'],
-                'thumbnailLink': photo['thumbnailLink'],
-            })
+        matched.append({
+            'name': photo['name'],
+            'webViewLink': photo['webViewLink'],
+            'thumbnailLink': photo['thumbnailLink'],
+        })
     return matched
-
 
 def find_all_matching_photos(user_face_path, all_folder_ids, lbph_model, threshold=70):
     all_matches = []

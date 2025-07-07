@@ -1,5 +1,4 @@
 flask
-gunicorn
 opencv-python
 opencv-contrib-python
 numpy
@@ -7,7 +6,6 @@ numpy
 facenet-pytorch
 torch
 torchvision
+
 scikit-learn
 firebase-admin
-google-api-python-client
-google-auth
