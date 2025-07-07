@@ -202,7 +202,7 @@ def find_my_photos():
 
         # Get folder ids
         all_folder_ids = get_all_gdrive_folder_ids()
-        matches = find_all_matching_photos(user_tmp, all_folder_ids, lbph_model, threshold=70)
+        matches = find_all_matching_photos(user_tmp, all_folder_ids, threshold=70)
 
         # Tambahkan log response di backend
         print("RESPONSE:", matches)

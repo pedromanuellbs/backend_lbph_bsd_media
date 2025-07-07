@@ -169,7 +169,7 @@ def is_face_match(face_img, target_img, threshold=70):
 
 # Di file: gdrive_match.py
 
-def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
+def find_matching_photos(user_face_path, folder_id, threshold=70):
     # Membaca gambar wajah user sekali saja di awal
     user_img = cv2.imread(user_face_path)
     if user_img is None:
@@ -208,9 +208,9 @@ def find_matching_photos(user_face_path, folder_id, lbph_model, threshold=70):
             
     return matched_in_folder
 
-def find_all_matching_photos(user_face_path, all_folder_ids, lbph_model, threshold=70):
+def find_all_matching_photos(user_face_path, all_folder_ids, threshold=70):
     all_matches = []
     for folder_id in all_folder_ids:
-        matches = find_matching_photos(user_face_path, folder_id, lbph_model, threshold)
+        matches = find_matching_photos(user_face_path, folder_id, threshold)
         all_matches.extend(matches)
     return all_matches
