@@ -3,6 +3,7 @@ import json
 import traceback
 
 import cv2
+import numpy as np
 from flask import Flask, request, jsonify, send_from_directory
 
 from face_preprocessing import detect_and_crop
@@ -170,32 +171,54 @@ def get_face_image():
 
 import traceback
 
+# --- PERUBAHAN UTAMA DI ENDPOINT INI ---
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
     try:
-        image = request.files['image']
-        user_tmp = 'tmp_user.jpg'
-        image.save(user_tmp)
+        image_file = request.files.get('image')
+        user_id = request.form.get('user_id') # 1. Terima user_id dari frontend
 
-        # Load model
-        lbph_model = cv2.face.LBPHFaceRecognizer_create()
-        lbph_model.read('lbph_model.xml')
+        if not image_file or not user_id:
+            return jsonify({'success': False, 'error': 'Gambar atau user_id tidak ditemukan'}), 400
 
-        # Get folder ids
+        # Muat model LBPH dan mapping label
+        lbph_model, label_map = load_model_and_labels()
+        if lbph_model is None:
+            return jsonify({'success': False, 'error': 'Model pengenalan wajah belum dilatih'}), 500
+
+        # 2. Verifikasi wajah yang baru di-scan
+        temp_path = 'tmp_verify.jpg'
+        image_file.save(temp_path)
+        
+        # Proses gambar baru untuk prediksi
+        face_to_verify = detect_and_crop(temp_path)
+        if face_to_verify is None:
+            os.remove(temp_path)
+            return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi pada gambar verifikasi'}), 400
+
+        # Prediksi ID dari wajah yang baru di-scan
+        predicted_label, confidence = lbph_model.predict(face_to_verify)
+        predicted_user_id = label_map.get(predicted_label)
+        
+        print(f"Verifikasi untuk user_id: {user_id}. Prediksi: {predicted_user_id} dengan confidence: {confidence}")
+
+        # 3. Bandingkan hasil prediksi dengan user_id yang dikirim
+        if predicted_user_id != user_id:
+            os.remove(temp_path)
+            return jsonify({'success': False, 'error': 'Verifikasi wajah gagal. Wajah tidak cocok dengan pengguna terdaftar.'}), 403
+
+        # 4. Jika verifikasi berhasil, lanjutkan pencarian foto
+        print(f"Verifikasi untuk {user_id} BERHASIL. Memulai pencarian foto...")
         all_folder_ids = get_all_gdrive_folder_ids()
-        matches = find_all_matching_photos(user_tmp, all_folder_ids, lbph_model, threshold=70)
-
-        # Tambahkan log response di backend
-        print("RESPONSE:", matches)
+        matches = find_all_matching_photos(temp_path, all_folder_ids, lbph_model, threshold=70)
+        
+        os.remove(temp_path) # Hapus file sementara
 
         return jsonify({'success': True, 'matched_photos': matches})
     except Exception as e:
-        print("===== ERROR TRACEBACK =====")
-        traceback.print_exc()  # WAJIB supaya error detail muncul di Railway deploy logs
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
-
-
-
+# --- AKHIR PERUBAHAN ---
 
 
 # --- Debug Endpoint: Lihat Isi Folder Railway ---
@@ -226,4 +249,4 @@ def debug_ls3():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8000)))
