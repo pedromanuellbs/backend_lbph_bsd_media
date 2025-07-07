@@ -1,7 +1,7 @@
 flask
 opencv-python
 opencv-contrib-python
-numpy
+numpy<2.0
 
 facenet-pytorch
 torch
