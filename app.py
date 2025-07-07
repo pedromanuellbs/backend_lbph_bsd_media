@@ -155,7 +155,7 @@ def verify_face():
         return jsonify({'success': False, 'error': 'User belum terdaftar'}), 400
 
     label, conf = model.predict(gray)
-    if label in labels_user and conf < 70:
+    if label in labels_user and conf < 100:
         session['verified_user_id'] = user_id
         return jsonify({'success': True, 'user_id': user_id, 'confidence': float(conf)})
     else:
