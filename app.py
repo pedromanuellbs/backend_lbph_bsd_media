@@ -170,12 +170,30 @@ def get_face_image():
 
 import traceback
 
+# Di file: app.py
+
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
     try:
+        if 'image' not in request.files:
+            return jsonify({'success': False, 'error': 'File gambar tidak ditemukan'}), 400
+
         image = request.files['image']
         user_tmp = 'tmp_user.jpg'
         image.save(user_tmp)
+
+        # --- TAMBAHKAN BLOK PEMBERSIH DI SINI ---
+        img = cv2.imread(user_tmp)
+        if img is None:
+            return jsonify({'success': False, 'error': 'Gagal memuat file gambar klien'}), 400
+        
+        # Konversi paksa ke format 8-bit, sama seperti perbaikan sebelumnya
+        if img.dtype != np.uint8:
+            img = cv2.convertScaleAbs(img)
+        
+        # Simpan kembali gambar yang sudah bersih
+        cv2.imwrite(user_tmp, img)
+        # -----------------------------------------
 
         # Load model
         lbph_model = cv2.face.LBPHFaceRecognizer_create()
@@ -191,7 +209,7 @@ def find_my_photos():
         return jsonify({'success': True, 'matched_photos': matches})
     except Exception as e:
         print("===== ERROR TRACEBACK =====")
-        traceback.print_exc()  # WAJIB supaya error detail muncul di Railway deploy logs
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
