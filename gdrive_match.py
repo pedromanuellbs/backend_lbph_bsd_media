@@ -20,17 +20,38 @@ mtcnn = MTCNN(keep_all=False, device='cpu')
 # -------------------------------------------------------------
 #testing123
 
+# Di file: gdrive_match.py
+
 def get_all_gdrive_folder_ids():
+    print("\n--- Memulai get_all_gdrive_folder_ids ---") # Laporan Awal
     db = firestore.client()
     folder_ids = []
-    sessions = db.collection('photo_sessions').stream()
-    for doc in sessions:
-        data = doc.to_dict()
-        drive_link = data.get('driveLink', '')
-        # Ambil folder ID dari link Google Drive
-        if 'folders/' in drive_link:
-            folder_id = drive_link.split('folders/')[1].split('?')[0]
-            folder_ids.append(folder_id)
+    
+    try:
+        sessions_stream = db.collection('photo_sessions').stream()
+        sessions = list(sessions_stream) # Ambil semua dokumen sekaligus
+        print(f"  > Ditemukan {len(sessions)} dokumen di koleksi 'photo_sessions'.")
+
+        for doc in sessions:
+            print(f"  -> Memproses Dokumen ID: {doc.id}")
+            data = doc.to_dict()
+            drive_link = data.get('driveLink', '')
+            print(f"     - Link Drive ditemukan: {drive_link}")
+
+            # Cek apakah 'folders/' ada di dalam link
+            if 'folders/' in drive_link:
+                print("     - Kondisi 'folders/ in drive_link' terpenuhi (True).")
+                folder_id = drive_link.split('folders/')[1].split('?')[0]
+                folder_ids.append(folder_id)
+                print(f"     - ID Folder berhasil diekstrak: {folder_id}")
+            else:
+                print("     - Kondisi 'folders/ in drive_link' TIDAK terpenuhi (False). Melewati...")
+    
+    except Exception as e:
+        print(f"  [ERROR] Terjadi exception saat mengambil data dari Firestore: {e}")
+
+    print(f"  > Fungsi selesai. Daftar folder_ids yang akan dikembalikan: {folder_ids}")
+    print("--- Selesai get_all_gdrive_folder_ids ---\n")
     return folder_ids
 
 def get_drive_service():
