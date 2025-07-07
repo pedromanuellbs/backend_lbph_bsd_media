@@ -86,7 +86,7 @@ def detect_and_crop_face(img):
         face = faces[0]
     else:
         face = faces
-    face_np = face.permute(1,2,0).int().numpy()
+    face_np = face.permute(1,2,0).byte().numpy()
     face_np = cv2.cvtColor(face_np, cv2.COLOR_RGB2BGR)
     return face_np
 
