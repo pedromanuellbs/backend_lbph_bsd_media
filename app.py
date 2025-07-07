@@ -190,17 +190,25 @@ import traceback
 
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
+    print("[DEBUG] Masuk route find_my_photos")
     user_id = session.get('verified_user_id')
+    print("[DEBUG] user_id:", user_id)
     if not user_id:
+        print("[DEBUG] Gagal verifikasi user_id")
         return jsonify({'success': False, 'error': 'Belum verifikasi wajah'}), 403
     try:
         lbph_model = cv2.face.LBPHFaceRecognizer_create()
         lbph_model.read('lbph_model.xml')
+        print("[DEBUG] LBPH model loaded")
         all_folder_ids = get_all_gdrive_folder_ids()
+        print("[DEBUG] folder_ids:", all_folder_ids)
         matches = find_all_matching_photos_for_user(user_id, all_folder_ids, lbph_model, threshold=70)
+        print("[DEBUG] matches:", matches)
         return jsonify({'success': True, 'matched_photos': matches})
     except Exception as e:
-        traceback.print_exc()   # <== Ini WAJIB biar error muncul di Railway log
+        import traceback
+        print("[DEBUG] ERROR:", str(e))
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
