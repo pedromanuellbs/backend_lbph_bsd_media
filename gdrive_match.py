@@ -153,7 +153,8 @@ def is_face_match(face_img, target_img, threshold=70):
     print(f"  > Skor Kemiripan (Confidence): {conf:.2f}")
     print(f"  > Ambang Batas (Threshold): {threshold}")
     
-    is_match = conf >= threshold
+    # is_match = conf >= threshold #dari pak stephen
+    is_match = conf < threshold
     print(f"  > Hasil Perbandingan: {'COCOK' if is_match else 'TIDAK COCOK'}")
     print("--- Selesai is_face_match ---\n")
     
