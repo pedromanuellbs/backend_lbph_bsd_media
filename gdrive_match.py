@@ -65,7 +65,7 @@ def list_photos(folder_id):
     results = service.files().list(
         q=f"'{folder_id}' in parents and trashed = false and mimeType contains 'image/'",
         pageSize=1000,
-        fields="files(id, name, webViewLink, thumbnailLink)").execute()
+        fields="files(id, name, webViewLink, thumbnailLink, webContentLink)").execute()
     return results.get('files', [])
 
 def list_photo_links(folder_id):
@@ -153,7 +153,7 @@ def is_face_match(face_img, target_img, threshold=70):
     print(f"  > Skor Kemiripan (Confidence): {conf:.2f}")
     print(f"  > Ambang Batas (Threshold): {threshold}")
     
-    is_match = conf < threshold
+    is_match = conf >= threshold
     print(f"  > Hasil Perbandingan: {'COCOK' if is_match else 'TIDAK COCOK'}")
     print("--- Selesai is_face_match ---\n")
     
