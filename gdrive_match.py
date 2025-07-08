@@ -113,7 +113,7 @@ def detect_and_crop_face(img):
 
 # Di file: gdrive_match.py
 
-def is_face_match(face_img, target_img, threshold=100):
+def is_face_match(face_img, target_img, threshold=70):
     print("--- Memulai is_face_match (Logika Baru 1:1) ---", flush=True)
     
     # Deteksi wajah dari FOTO KLIEN yang di-upload
@@ -169,7 +169,7 @@ def is_face_match(face_img, target_img, threshold=100):
 
 # Di file: gdrive_match.py
 
-def find_matching_photos(user_face_path, folder_id, threshold=100):
+def find_matching_photos(user_face_path, folder_id, threshold=70):
     # Membaca gambar wajah user sekali saja di awal
     user_img = cv2.imread(user_face_path)
     if user_img is None:
@@ -208,7 +208,7 @@ def find_matching_photos(user_face_path, folder_id, threshold=100):
             
     return matched_in_folder
 
-def find_all_matching_photos(user_face_path, all_folder_ids, threshold=100):
+def find_all_matching_photos(user_face_path, all_folder_ids, threshold=70):
     all_matches = []
     for folder_id in all_folder_ids:
         matches = find_matching_photos(user_face_path, folder_id, threshold)
