@@ -13,7 +13,7 @@ from facenet_pytorch import MTCNN
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
 # Inisialisasi MTCNN untuk deteksi wajah
-mtcnn = MTCNN(keep_all=False, device='cpu')
+# mtcnn = MTCNN(keep_all=False, device='cpu')
 
 # --- PERUBAHAN DI SINI: HAPUS BLOK INISIALISASI FIREBASE ---
 # Blok 'if not firebase_admin._apps:' telah dihapus dari sini
@@ -100,6 +100,9 @@ def download_drive_photo(file_id):
     return img
 
 def detect_and_crop_face(img):
+    # Inisialisasi MTCNN di sini agar selalu fresh untuk setiap panggilan
+    mtcnn = MTCNN(keep_all=False, device='cpu')
+    
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     faces = mtcnn(rgb)
     if faces is None:
@@ -111,7 +114,6 @@ def detect_and_crop_face(img):
     face_np = face.permute(1,2,0).byte().numpy()
     face_np = cv2.cvtColor(face_np, cv2.COLOR_RGB2BGR)
     return face_np
-
 # Di file: gdrive_match.py
 
 # Di file: gdrive_match.py
