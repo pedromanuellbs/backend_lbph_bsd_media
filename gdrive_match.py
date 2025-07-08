@@ -99,22 +99,32 @@ def download_drive_photo(file_id):
 
     return img
 
+# Di file: gdrive_match.py
+
 def detect_and_crop_face(img):
+    # --- FIX TERAKHIR: Paksa buat salinan gambar di memori ---
+    # Bertujuan untuk memutus rantai cache/referensi objek yang mungkin terjadi.
+    img_copy = img.copy()
+    # ----------------------------------------------------------
+
     # Inisialisasi MTCNN di sini agar selalu fresh
     mtcnn = MTCNN(keep_all=False, device='cpu')
-
-    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    
+    # Gunakan img_copy untuk semua proses selanjutnya
+    rgb = cv2.cvtColor(img_copy, cv2.COLOR_BGR2RGB)
     faces = mtcnn(rgb)
     if faces is None:
         return None
+        
     if isinstance(faces, list) or len(faces.shape) == 4:
         face = faces[0]
     else:
         face = faces
+        
     face_np = face.permute(1,2,0).byte().numpy()
     face_np = cv2.cvtColor(face_np, cv2.COLOR_RGB2BGR)
+    
     return face_np
-# Di file: gdrive_match.py
 
 # Di file: gdrive_match.py
 
