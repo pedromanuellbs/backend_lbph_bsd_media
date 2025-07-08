@@ -111,8 +111,10 @@ def register_face():
         print("Tidak ada file 'image' di request!")
 
     # Validasi awal
-    if not user_id or not image or image.content_length == 0:
-        return jsonify({'success': False, 'error': 'user_id atau file gambar tidak valid/kosong'}), 400
+    if not user_id or not image:
+        # if not user_id or not image or image.content_length == 0:
+        # return jsonify({'success': False, 'error': 'user_id atau file gambar tidak valid/kosong'}), 400
+        return jsonify({'success': False, 'error': 'user_id atau image tidak ada di request'}), 400
 
     # Simpan gambar ke folder user baru/eksisting (folder otomatis dibuat jika belum ada)
     raw_path = save_face_image(user_id, image)
