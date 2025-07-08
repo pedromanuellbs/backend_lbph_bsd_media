@@ -108,7 +108,7 @@ def detect_and_crop_face(img):
     # ----------------------------------------------------------
 
     # Inisialisasi MTCNN di sini agar selalu fresh
-    mtcnn = MTCNN(keep_all=False, device='cpu')
+    mtcnn = MTCNN(keep_all=False, device='cpu', post_process=False)
     
     # Gunakan img_copy untuk semua proses selanjutnya
     rgb = cv2.cvtColor(img_copy, cv2.COLOR_BGR2RGB)
