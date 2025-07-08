@@ -114,47 +114,45 @@ def detect_and_crop_face(img):
 
 # Di file: gdrive_match.py
 
-def is_face_match(face_img, target_img, threshold=70):
-    print("--- Memulai is_face_match (Logika Baru 1:1) ---")
-    # logging.basicConfig(level=logging.INFO)
-    # logging.info("Memulai fungsi is_face_match dengan logika baru 1:1")
-    
-    # Deteksi wajah dari FOTO KLIEN yang di-upload
-    face1 = detect_and_crop_face(face_img) # Wajah Klien
-    face2 = detect_and_crop_face(target_img) # Wajah Target dari Drive
+# Di file: gdrive_match.py
 
-    if face1 is None:
-        print("  > Deteksi wajah klien (face1): Gagal")
+def is_face_match(face_img, target_img, threshold=0.8): # Threshold baru, misal 0.8
+    print("--- Memulai is_face_match (Logika Baru: HISTOGRAM) ---")
+    
+    face1 = detect_and_crop_face(face_img)
+    face2 = detect_and_crop_face(target_img)
+    
+    if face1 is None or face2 is None:
+        if face1 is None: print("  > Deteksi wajah klien (face1): Gagal")
+        if face2 is None: print("  > Deteksi wajah target (face2): Gagal")
         print("--- Selesai is_face_match ---\n")
         return False
-    if face2 is None:
-        print("  > Deteksi wajah target (face2): Gagal")
-        print("--- Selesai is_face_match ---\n")
-        return False
+
     print("  > Deteksi wajah klien (face1): Berhasil")
     print("  > Deteksi wajah target (face2): Berhasil")
-
+    
     gray1 = cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
     
-    # --- LOGIKA BARU DIMULAI DI SINI ---
-    # 1. Buat model LBPH baru yang masih kosong
-    temp_model = cv2.face.LBPHFaceRecognizer_create()
+    # --- LOGIKA BARU: PERBANDINGAN HISTOGRAM ---
+    # Hitung histogram untuk kedua gambar
+    hist1 = cv2.calcHist([gray1], [0], None, [256], [0, 256])
+    hist2 = cv2.calcHist([gray2], [0], None, [256], [0, 256])
     
-    # 2. Latih model tersebut HANYA dengan satu gambar, yaitu wajah klien
-    # Kita beri label '1' sebagai penanda
-    temp_model.train([gray1], np.array([1]))
+    # Normalisasi histogram agar skalanya sama
+    cv2.normalize(hist1, hist1, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+    cv2.normalize(hist2, hist2, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
     
-    # 3. Sekarang, gunakan model-sementara ini untuk memprediksi wajah target
-    # Hasil 'conf' akan menjadi jarak antara wajah klien dan wajah target
-    label, conf = temp_model.predict(gray2)
+    # Bandingkan histogram menggunakan metode korelasi
+    score = cv2.compareHist(hist1, hist2, cv2.HISTCMP_CORREL)
     # --- LOGIKA BARU SELESAI ---
     
-    print(f"  > Skor Kemiripan (Confidence): {conf:.2f}")
+    print(f"  > Skor Kemiripan (Korelasi Histogram): {score:.4f}")
     print(f"  > Ambang Batas (Threshold): {threshold}")
     
-    # is_match = conf >= threshold #dari pak stephen
-    is_match = conf < threshold
+    # Logika baru: Dianggap cocok jika skor korelasi > threshold
+    is_match = score > threshold
+    
     print(f"  > Hasil Perbandingan: {'COCOK' if is_match else 'TIDAK COCOK'}")
     print("--- Selesai is_face_match ---\n")
     
