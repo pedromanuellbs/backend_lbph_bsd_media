@@ -211,7 +211,9 @@ def find_matching_photos(user_face_path, folder_id, threshold=70):
                 matched_in_folder.append({
                     'name': photo['name'],
                     'webViewLink': photo['webViewLink'],
+                    'webContentLink': photo.get('webContentLink'), # Pastikan ini juga diminta dari API
                     'thumbnailLink': photo['thumbnailLink'],
+                    'sessionId': folder_id  # <-- TAMBAHKAN BARIS INI
                 })
             else:
                 print(f"    [TIDAK COCOK] Wajah tidak cocok di foto {photo['name']}")
