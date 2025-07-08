@@ -23,14 +23,14 @@ SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
 # Di file: gdrive_match.py
 
-def get_all_photo_sessions():
-    print("\n--- Memulai get_all_photo_sessions ---")
+def get_all_gdrive_folder_ids():
+    print("\n--- Memulai get_all_gdrive_folder_ids ---") # Laporan Awal
     db = firestore.client()
-    sessions_data = []
+    folder_ids = []
     
     try:
         sessions_stream = db.collection('photo_sessions').stream()
-        sessions = list(sessions_stream)
+        sessions = list(sessions_stream) # Ambil semua dokumen sekaligus
         print(f"  > Ditemukan {len(sessions)} dokumen di koleksi 'photo_sessions'.")
 
         for doc in sessions:
@@ -39,25 +39,23 @@ def get_all_photo_sessions():
             drive_link = data.get('driveLink', '')
             print(f"     - Link Drive ditemukan: {drive_link}")
 
+            # Cek apakah 'folders/' ada di dalam link
             if 'folders/' in drive_link:
+                print("     - Kondisi 'folders/ in drive_link' terpenuhi (True).")
                 folder_id = drive_link.split('folders/')[1].split('?')[0]
-                # --- PERBAIKAN 2: Simpan ID Dokumen dan ID Folder ---
-                # Kita simpan keduanya agar bisa digunakan nanti.
-                sessions_data.append({
+                folder_ids.append({
                     'sessionId': doc.id,       # Ini ID Dokumen Firestore (YANG BENAR)
-                    'folderId': folder_id      # Ini ID Folder Google Drive
-                })
-                print(f"     - ID Dokumen (sessionId): {doc.id}")
-                print(f"     - ID Folder (folderId): {folder_id}")
+                    'folderId': folder_id})
+                print(f"     - ID Folder berhasil diekstrak: {folder_id}")
             else:
-                print("     - Link Drive tidak valid. Melewati...")
+                print("     - Kondisi 'folders/ in drive_link' TIDAK terpenuhi (False). Melewati...")
     
     except Exception as e:
         print(f"  [ERROR] Terjadi exception saat mengambil data dari Firestore: {e}")
 
-    print(f"  > Fungsi selesai. Total sesi yang akan diproses: {len(sessions_data)}")
-    print("--- Selesai get_all_photo_sessions ---\n")
-    return sessions_data
+    print(f"  > Fungsi selesai. Daftar folder_ids yang akan dikembalikan: {folder_ids}")
+    print("--- Selesai get_all_gdrive_folder_ids ---\n")
+    return folder_ids
 
 def get_drive_service():
     cred_json = os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']
@@ -72,8 +70,8 @@ def list_photos(folder_id):
         fields="files(id, name, webViewLink, thumbnailLink, webContentLink)").execute()
     return results.get('files', [])
 
-# def list_photo_links(folder_id):
-#     return list_photos(folder_id) #jgn lupa di uncomment kalo error
+def list_photo_links(folder_id):
+    return list_photos(folder_id)
 
 # Di file: gdrive_match.py
 
@@ -188,38 +186,52 @@ def is_face_match(face_img, target_img, threshold=0.8): # Threshold baru, misal 
 # Di file: gdrive_match.py
 
 def find_matching_photos(user_face_path, session_id, folder_id, threshold=70):
+    # Membaca gambar wajah user sekali saja di awal
     user_img = cv2.imread(user_face_path)
     if user_img is None:
         print(f"Error: Gagal membaca file wajah user di {user_face_path}")
         return []
 
-    photos_in_folder = list_photos(folder_id)
+    photos_in_folder = list_photo_links(folder_id)
     matched_in_folder = []
+
     print(f"Memeriksa {len(photos_in_folder)} foto di folder {folder_id}...")
 
     for photo in photos_in_folder:
         try:
             print(f"  -> Memproses foto: {photo['name']} ({photo['id']})")
+            # 1. Download foto dari Google Drive
             target_img = download_drive_photo(photo['id'])
             if target_img is None:
                 continue
 
+            # 2. Lakukan perbandingan wajah
+            # Fungsi is_face_match dipanggil di sini!
             if is_face_match(user_img, target_img, threshold):
                 print(f"    [COCOK] Wajah ditemukan di foto {photo['name']}")
-                # --- PERBAIKAN 4: Gunakan session_id yang benar ---
+                # 3. Jika cocok, baru tambahkan ke daftar hasil
                 matched_in_folder.append({
                     'name': photo['name'],
                     'webViewLink': photo['webViewLink'],
-                    'webContentLink': photo.get('webContentLink'),
+                    'webContentLink': photo.get('webContentLink'), # Pastikan ini juga diminta dari API
                     'thumbnailLink': photo['thumbnailLink'],
                     'sessionId': session_id  # Menggunakan ID Dokumen Firestore
                 })
             else:
                 print(f"    [TIDAK COCOK] Wajah tidak cocok di foto {photo['name']}")
+
         except Exception as e:
             print(f"    Error saat memproses foto {photo['name']}: {e}")
             continue
+            
     return matched_in_folder
+
+# def find_all_matching_photos(user_face_path, all_folder_ids, threshold=70):
+#     all_matches = []
+#     for folder_id in all_folder_ids:
+#         matches = find_matching_photos(user_face_path, folder_id, threshold)
+#         all_matches.extend(matches)
+#     return all_matches
 
 def find_all_matching_photos(user_face_path, all_sessions_data, threshold=70):
     all_matches = []
