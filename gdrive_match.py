@@ -1,6 +1,6 @@
 import os
 import json
-import logging
+# import logging
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
@@ -115,9 +115,9 @@ def detect_and_crop_face(img):
 # Di file: gdrive_match.py
 
 def is_face_match(face_img, target_img, threshold=70):
-    print("--- Memulai is_face_match (Logika Baru 1:1) ---", flush=True)
-    logging.basicConfig(level=logging.INFO)
-    logging.info("Memulai fungsi is_face_match dengan logika baru 1:1")
+    print("--- Memulai is_face_match (Logika Baru 1:1) ---")
+    # logging.basicConfig(level=logging.INFO)
+    # logging.info("Memulai fungsi is_face_match dengan logika baru 1:1")
     
     # Deteksi wajah dari FOTO KLIEN yang di-upload
     face1 = detect_and_crop_face(face_img) # Wajah Klien
