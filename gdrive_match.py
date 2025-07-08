@@ -100,9 +100,9 @@ def download_drive_photo(file_id):
     return img
 
 def detect_and_crop_face(img):
-    # Inisialisasi MTCNN di sini agar selalu fresh untuk setiap panggilan
+    # Inisialisasi MTCNN di sini agar selalu fresh
     mtcnn = MTCNN(keep_all=False, device='cpu')
-    
+
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     faces = mtcnn(rgb)
     if faces is None:
