@@ -67,7 +67,7 @@ def list_photos(folder_id):
     results = service.files().list(
         q=f"'{folder_id}' in parents and trashed = false and mimeType contains 'image/'",
         pageSize=1000,
-        fields="files(id, name, webViewLink, thumbnailLink, webContentLink)").execute()
+        fields="files(id, name, webViewLink)").execute() # Hanya butuh id, name, webViewLink
     return results.get('files', [])
 
 def list_photo_links(folder_id):
@@ -210,12 +210,17 @@ def find_matching_photos(user_face_path, session_id, folder_id, threshold=70):
             if is_face_match(user_img, target_img, threshold):
                 print(f"    [COCOK] Wajah ditemukan di foto {photo['name']}")
                 # 3. Jika cocok, baru tambahkan ke daftar hasil
+
+                file_id = photo['id']
+                public_image_url = f'https://drive.google.com/uc?export=view&id={file_id}'
+
+
                 matched_in_folder.append({
                     'name': photo['name'],
                     'webViewLink': photo['webViewLink'],
-                    'webContentLink': photo.get('webContentLink'), # Pastikan ini juga diminta dari API
-                    'thumbnailLink': photo['thumbnailLink'],
-                    'sessionId': session_id  # Menggunakan ID Dokumen Firestore
+                    'webContentLink': public_image_url, # Gunakan link baru
+                    'thumbnailLink': public_image_url,  # Gunakan link baru
+                    'sessionId': session_id
                 })
             else:
                 print(f"    [TIDAK COCOK] Wajah tidak cocok di foto {photo['name']}")
