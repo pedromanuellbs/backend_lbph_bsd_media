@@ -6,6 +6,7 @@ from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
 import firebase_admin
 from firebase_admin import firestore
+import face_recognition
 import cv2
 import numpy as np
 from facenet_pytorch import MTCNN
@@ -130,58 +131,83 @@ def detect_and_crop_face(img):
 
 # Di file: gdrive_match.py
 
-def is_face_match(face_img, target_img, threshold=0.8): # Threshold baru, misal 0.8
-    print("--- Memulai is_face_match (Logika Baru: HISTOGRAM) ---")
-    
-    face1 = detect_and_crop_face(face_img)
-    face2 = detect_and_crop_face(target_img)
-    
-    if face1 is None or face2 is None:
-        if face1 is None: print("  > Deteksi wajah klien (face1): Gagal")
-        if face2 is None: print("  > Deteksi wajah target (face2): Gagal")
-        print("--- Selesai is_face_match ---\n")
+def is_face_match(face_img, target_img, threshold=0.6):
+    # 1) Deteksi & crop
+    f1 = detect_and_crop_face(face_img)
+    f2 = detect_and_crop_face(target_img)
+    if f1 is None or f2 is None:
         return False
 
-    print("  > Deteksi wajah klien (face1): Berhasil")
-    print("  > Deteksi wajah target (face2): Berhasil")
+    # 2) Convert BGR→RGB untuk face_recognition
+    rgb1 = cv2.cvtColor(f1, cv2.COLOR_BGR2RGB)
+    rgb2 = cv2.cvtColor(f2, cv2.COLOR_BGR2RGB)
+
+    # 3) Hitung face embeddings
+    encs1 = face_recognition.face_encodings(rgb1)
+    encs2 = face_recognition.face_encodings(rgb2)
+    if not encs1 or not encs2:
+        return False
+    e1, e2 = encs1[0], encs2[0]
+
+    # 4) Hitung jarak Euclidean
+    dist = np.linalg.norm(e1 - e2)
+    print(f"Euclidean distance: {dist:.3f} (threshold: {threshold})")
+
+    # 5) Cek match
+    return dist < threshold
+# ini sebelum (jam 5 sore 9 juli 2025)
+# def is_face_match(face_img, target_img, threshold=0.8): # Threshold baru, misal 0.8
+#     print("--- Memulai is_face_match (Logika Baru: HISTOGRAM) ---")
     
-    gray1 = cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
+#     face1 = detect_and_crop_face(face_img)
+#     face2 = detect_and_crop_face(target_img)
     
-    # --- LOGIKA BARU: PERBANDINGAN HISTOGRAM ---
-    # Hitung histogram untuk kedua gambar
-    hist1 = cv2.calcHist([gray1], [0], None, [256], [0, 256])
-    hist2 = cv2.calcHist([gray2], [0], None, [256], [0, 256])
+#     if face1 is None or face2 is None:
+#         if face1 is None: print("  > Deteksi wajah klien (face1): Gagal")
+#         if face2 is None: print("  > Deteksi wajah target (face2): Gagal")
+#         print("--- Selesai is_face_match ---\n")
+#         return False
+
+#     print("  > Deteksi wajah klien (face1): Berhasil")
+#     print("  > Deteksi wajah target (face2): Berhasil")
     
-    # Normalisasi histogram agar skalanya sama
-    cv2.normalize(hist1, hist1, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
-    cv2.normalize(hist2, hist2, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+#     gray1 = cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY)
+#     gray2 = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
     
-    # Bandingkan histogram menggunakan metode korelasi
-    score = cv2.compareHist(hist1, hist2, cv2.HISTCMP_CORREL)
-    # --- LOGIKA BARU SELESAI ---
+#     # --- LOGIKA BARU: PERBANDINGAN HISTOGRAM ---
+#     # Hitung histogram untuk kedua gambar
+#     hist1 = cv2.calcHist([gray1], [0], None, [256], [0, 256])
+#     hist2 = cv2.calcHist([gray2], [0], None, [256], [0, 256])
     
-    print(f"  > Skor Kemiripan (Korelasi Histogram): {score:.4f}")
-    print(f"  > Ambang Batas (Threshold): {threshold}")
+#     # Normalisasi histogram agar skalanya sama
+#     cv2.normalize(hist1, hist1, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+#     cv2.normalize(hist2, hist2, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
     
-    # Logika baru: Dianggap cocok jika skor korelasi > threshold
-    is_match = score > threshold
+#     # Bandingkan histogram menggunakan metode korelasi
+#     score = cv2.compareHist(hist1, hist2, cv2.HISTCMP_CORREL)
+#     # --- LOGIKA BARU SELESAI ---
     
-    print(f"  > Hasil Perbandingan: {'COCOK' if is_match else 'TIDAK COCOK'}")
-    print("--- Selesai is_face_match ---\n")
+#     print(f"  > Skor Kemiripan (Korelasi Histogram): {score:.4f}")
+#     print(f"  > Ambang Batas (Threshold): {threshold}")
     
-    return is_match
-    # # Lakukan prediksi untuk mendapatkan confidence score
-    # label, conf = lbph_model.predict(gray2)
+#     # Logika baru: Dianggap cocok jika skor korelasi > threshold
+#     is_match = score > threshold
     
-    # print(f"  > Skor Kemiripan (Confidence): {conf:.2f}") # Cetak skornya
-    # print(f"  > Ambang Batas (Threshold): {threshold}") # Cetak threshold
+#     print(f"  > Hasil Perbandingan: {'COCOK' if is_match else 'TIDAK COCOK'}")
+#     print("--- Selesai is_face_match ---\n")
     
-    # is_match = conf < threshold
-    # print(f"  > Hasil Perbandingan: {'COCOK' if is_match else 'TIDAK COCOK'}")
-    # print("--- Selesai is_face_match ---\n")
+#     return is_match
+#     # # Lakukan prediksi untuk mendapatkan confidence score
+#     # label, conf = lbph_model.predict(gray2)
     
-    # return is_match
+#     # print(f"  > Skor Kemiripan (Confidence): {conf:.2f}") # Cetak skornya
+#     # print(f"  > Ambang Batas (Threshold): {threshold}") # Cetak threshold
+    
+#     # is_match = conf < threshold
+#     # print(f"  > Hasil Perbandingan: {'COCOK' if is_match else 'TIDAK COCOK'}")
+#     # print("--- Selesai is_face_match ---\n")
+    
+#     # return is_match
 
 # Di file: gdrive_match.py
 
