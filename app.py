@@ -98,7 +98,6 @@ def home():
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
-    # --- DEBUG LOGGING UNTUK TROUBLESHOOTING UPLOAD ---
     print("===== MULAI register_face =====")
     print("request.files:", request.files)
     print("request.form:", request.form)
@@ -107,37 +106,41 @@ def register_face():
     if image:
         print("image.filename:", image.filename)
         print("image.content_length:", image.content_length)
+        # Tambahan: print file pointer size
+        try:
+            image.seek(0, 2)  # move to end
+            file_size = image.tell()
+            image.seek(0)     # reset pointer
+        except Exception as e:
+            file_size = f"ERROR: {e}"
+        print("image file size (tell):", file_size)
     else:
         print("Tidak ada file 'image' di request!")
 
     # Validasi awal
-    if not user_id or not image or image.content_length == 0:
+    if not user_id or not image or image.content_length == 0 or (hasattr(image, "tell") and file_size == 0):
         return jsonify({'success': False, 'error': 'user_id atau file gambar tidak valid/kosong'}), 400
 
     # Simpan gambar ke folder user baru/eksisting
-    raw_path = save_face_image(user_id, image)
+    try:
+        raw_path = save_face_image(user_id, image)
+    except Exception as e:
+        print("Error saat menyimpan file:", e)
+        return jsonify({'success': False, 'error': f'Gagal menyimpan file: {e}'}), 400
+
     cropped  = detect_and_crop(raw_path)
 
-    # --- PENGECEKAN HASIL CROP YANG DIPERBAIKI ---
     if cropped is None or cropped.size == 0:
         print(f"Wajah tidak terdeteksi untuk user_id: {user_id}. File asli: {image.filename}")
-        # Hapus gambar mentah yang gagal di-crop agar tidak menumpuk
         try:
             os.remove(raw_path)
             print(f"File gagal {raw_path} telah dihapus.")
         except OSError as e:
             print(f"Error saat menghapus file gagal: {e}")
-            
-        # Kirim error yang lebih deskriptif ke klien
         return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi pada gambar yang diunggah. Pastikan gambar jelas dan menampilkan wajah.'}), 400
 
-    # Timpa gambar asli dengan gambar yang sudah di-crop
     cv2.imwrite(raw_path, cropped)
-    
-    # --- Upload ke Firebase Storage ---
     firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
-
-    # Retrain dan simpan model
     metrics = train_and_evaluate()
 
     return jsonify({ 'success': True, 'metrics': metrics, 'firebase_image_url': firebase_url })
