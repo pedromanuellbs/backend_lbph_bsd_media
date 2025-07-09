@@ -118,8 +118,17 @@ def register_face():
         print("Tidak ada file 'image' di request!")
 
     # Validasi awal
-    if not user_id or not image or image.content_length == 0 or (hasattr(image, "tell") and file_size == 0):
+    if not user_id or not image:
         return jsonify({'success': False, 'error': 'user_id atau file gambar tidak valid/kosong'}), 400
+    try:
+        pos = image.tell()
+        chunk = image.read(10)
+        image.seek(pos)
+        if not chunk:
+            return jsonify({'success': False, 'error': 'File gambar kosong'}), 400
+    except Exception as e:
+        print("Error cek isi file:", e)
+        return jsonify({'success': False, 'error': f'File gambar error: {e}'}), 400
 
     # Simpan gambar ke folder user baru/eksisting
     try:
