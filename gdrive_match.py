@@ -6,7 +6,6 @@ from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
 import firebase_admin
 from firebase_admin import firestore
-import face_recognition
 import cv2
 import numpy as np
 from facenet_pytorch import MTCNN
