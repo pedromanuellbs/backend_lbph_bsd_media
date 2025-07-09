@@ -9,4 +9,3 @@ torchvision
 
 scikit-learn
 firebase-admin
-face_recognition
