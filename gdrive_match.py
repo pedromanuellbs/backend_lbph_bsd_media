@@ -131,7 +131,7 @@ def detect_and_crop_face(img):
 # Di file: gdrive_match.py
 
 # ini sebelum (jam 5 sore 9 juli 2025)
-def is_face_match(face_img, target_img, threshold=0.8): # Threshold baru, misal 0.8
+def is_face_match(face_img, target_img, threshold=0.6): # Threshold baru, misal 0.8
     print("--- Memulai is_face_match (Logika Baru: HISTOGRAM) ---")
     
     face1 = detect_and_crop_face(face_img)
