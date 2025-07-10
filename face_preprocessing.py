@@ -1,36 +1,33 @@
-# face_preprocessing.py
+# Di file: face_preprocessing.py
 
 import cv2
 from deepface import DeepFace
 import numpy as np
+import os
 
 def detect_and_crop(img_path):
     """
-    Detect a single face from the image at img_path using DeepFace's detector,
-    crop, convert to grayscale, and return as a NumPy array.
-    Returns None if no face is detected.
+    Detect a single face, crop, resize to 96x96, convert to grayscale,
+    and return as a NumPy array.
     """
     try:
-        # DeepFace.extract_faces akan mendeteksi dan meng-crop wajah.
-        # Backend 'mtcnn' digunakan secara default.
+        # DeepFace akan mendeteksi dan meng-crop wajah
         face_obj = DeepFace.extract_faces(
-            img_path=img_path, 
-            enforce_detection=True, 
+            img_path=img_path,
+            enforce_detection=True,
             detector_backend='mtcnn',
             align=True
         )
-        
-        # Ambil data gambar dari hasil
-        face_img = face_obj[0]['face'] # Ambil wajah pertama yang terdeteksi
-        
-        # Konversi gambar dari float (0-1) ke uint8 (0-255)
-        face_img_uint8 = (face_img * 255).astype(np.uint8)
 
-        # Konversi ke Grayscale
+        face_img = face_obj[0]['face']
+        face_img_uint8 = (face_img * 255).astype(np.uint8)
         gray_face = cv2.cvtColor(face_img_uint8, cv2.COLOR_RGB2GRAY)
-        
-        return gray_face
-        
+
+        # Seragamkan ukuran semua wajah menjadi 96x96 piksel
+        resized_face = cv2.resize(gray_face, (96, 96))
+
+        return resized_face # Kembalikan gambar yang ukurannya sudah seragam
+
     except Exception as e:
-        print(f"Wajah tidak terdeteksi atau error di DeepFace: {e}")
+        print(f"Wajah tidak terdeteksi atau error di DeepFace pada file {os.path.basename(img_path)}: {e}")
         return None
