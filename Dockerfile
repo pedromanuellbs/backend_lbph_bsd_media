@@ -1,7 +1,7 @@
 # 1. Gunakan base image python yang ringan
 FROM python:3.10-slim
 
-# 2. Install system dependencies, termasuk cmake dan python3-dev
+# 2. Install system dependencies, termasuk wget untuk mengunduh model
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
@@ -12,22 +12,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender-dev \
     libgl1-mesa-glx \
     libjpeg-dev \
+    wget \
  && rm -rf /var/lib/apt/lists/*
 
 # 3. Tetapkan direktori kerja di dalam container
 WORKDIR /app
 
-# 4. Salin HANYA file requirements.txt terlebih dahulu
+# 4. "Panggang" model DeepFace ke dalam image saat build
+# Ini mencegah unduhan saat runtime yang menyebabkan timeout.
+RUN mkdir -p /root/.deepface/weights \
+ && wget -q -O /root/.deepface/weights/vgg_face_weights.h5 https://github.com/serengil/deepface_models/releases/download/v1.0/vgg_face_weights.h5
+
+# 5. Salin HANYA file requirements.txt terlebih dahulu untuk caching
 COPY requirements.txt .
 
-# 5. Install semua Pustaka Python dari satu sumber
+# 6. Install semua Pustaka Python dari satu sumber
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 6. Salin sisa kode aplikasi Anda
+# 7. Salin sisa kode aplikasi Anda
 COPY . .
 
-# 7. Expose port yang digunakan aplikasi
+# 8. Expose port yang digunakan aplikasi
 EXPOSE 8000
 
-# 8. Perintah untuk menjalankan aplikasi saat container dimulai
+# 9. Perintah untuk menjalankan aplikasi saat container dimulai
 CMD ["python", "app.py"]
