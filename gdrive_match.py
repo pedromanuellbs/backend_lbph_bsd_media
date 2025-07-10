@@ -89,21 +89,20 @@ def download_drive_photo(file_id):
 # --- PERUBAHAN UTAMA DIMULAI DI SINI ---
 
 # Di gdrive_match.py
-def is_face_match(user_face_path, target_face_path, threshold=0.4):
+def is_face_match(user_face_path, target_face_path, threshold=0.593): # Threshold baru untuk SFace
     """
     Memverifikasi apakah dua gambar wajah adalah orang yang sama menggunakan DeepFace.
     """
-    print(f"--- Memulai is_face_match (Model: FaceNet) ---")
+    print(f"--- Memulai is_face_match (Model: SFace) ---") # Model baru
     try:
         result = DeepFace.verify(
             img1_path=user_face_path, 
             img2_path=target_face_path,
-            model_name="FaceNet",  # <-- UBAHAN UTAMA DI SINI
+            model_name="SFace",  # <-- UBAHAN UTAMA DI SINI
             enforce_detection=True
         )
         
         distance = result['distance']
-        # Logika tetap sama: Jarak lebih kecil berarti lebih mirip
         is_match = distance <= threshold
         
         print(f"  > Jarak: {distance:.4f}, Ambang Batas: {threshold}")
@@ -115,7 +114,7 @@ def is_face_match(user_face_path, target_face_path, threshold=0.4):
         print(f"  > Error DeepFace: {e}")
         print("--- Selesai is_face_match ---\n")
         return False
-
+    
 def find_matching_photos(user_face_path, session_id, folder_id, threshold=0.4): # Tambahkan parameter
     """
     Mencari foto yang cocok di dalam satu folder Google Drive.
