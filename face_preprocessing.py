@@ -80,6 +80,49 @@ import numpy as np
 
 # face_preprocessing.py
 
+# import os
+# import cv2
+# from deepface import DeepFace
+# import numpy as np
+
+# def detect_and_crop(img_path):
+#     """
+#     Mendeteksi satu wajah dari gambar, memotong, mengubah ukuran menjadi 96x96,
+#     mengonversi ke grayscale, dan mengembalikannya sebagai array NumPy.
+    
+#     Alignment dinonaktifkan untuk meningkatkan tingkat keberhasilan deteksi.
+#     Menggunakan backend 'opencv' yang cepat.
+#     """
+#     try:
+#         # DeepFace akan mendeteksi dan memotong wajah dari gambar
+#         face_obj = DeepFace.extract_faces(
+#             img_path=img_path,
+#             enforce_detection=True,
+#             detector_backend='opencv',
+#             align=False
+#         )
+        
+#         # Mengambil data gambar dari hasil deteksi pertama
+#         # Hasil 'face' adalah array numpy dengan format (W, H, C) dan nilai float 0-1
+#         face_img = face_obj[0]['face']
+        
+#         # Konversi gambar dari float (0-1) ke uint8 (0-255) yang dibutuhkan OpenCV
+#         face_img_uint8 = (face_img * 255).astype(np.uint8)
+
+#         # Konversi ke Grayscale untuk model LBPH
+#         gray_face = cv2.cvtColor(face_img_uint8, cv2.COLOR_RGB2GRAY)
+
+#         # Seragamkan ukuran semua wajah menjadi 96x96 piksel
+#         resized_face = cv2.resize(gray_face, (96, 96))
+        
+#         return resized_face
+
+#     except Exception as e:
+#         # Memberikan nama file saat terjadi error agar lebih informatif
+#         print(f"Wajah tidak terdeteksi atau error di DeepFace pada file {os.path.basename(img_path)}: {e}")
+#         return None
+
+
 import os
 import cv2
 from deepface import DeepFace
@@ -90,34 +133,31 @@ def detect_and_crop(img_path):
     Mendeteksi satu wajah dari gambar, memotong, mengubah ukuran menjadi 96x96,
     mengonversi ke grayscale, dan mengembalikannya sebagai array NumPy.
     
-    Alignment dinonaktifkan untuk meningkatkan tingkat keberhasilan deteksi.
-    Menggunakan backend 'opencv' yang cepat.
+    Fungsi ini adalah langkah pre-processing untuk data latih model LBPH.
     """
+    # Dapatkan nama file untuk logging
+    filename = os.path.basename(img_path)
+    
     try:
         # DeepFace akan mendeteksi dan memotong wajah dari gambar
         face_obj = DeepFace.extract_faces(
             img_path=img_path,
             enforce_detection=True,
-            detector_backend='opencv',
+            detector_backend='mtcnn',  # <-- Diubah sesuai permintaan
             align=False
         )
         
-        # Mengambil data gambar dari hasil deteksi pertama
-        # Hasil 'face' adalah array numpy dengan format (W, H, C) dan nilai float 0-1
         face_img = face_obj[0]['face']
-        
-        # Konversi gambar dari float (0-1) ke uint8 (0-255) yang dibutuhkan OpenCV
         face_img_uint8 = (face_img * 255).astype(np.uint8)
-
-        # Konversi ke Grayscale untuk model LBPH
         gray_face = cv2.cvtColor(face_img_uint8, cv2.COLOR_RGB2GRAY)
-
-        # Seragamkan ukuran semua wajah menjadi 96x96 piksel
         resized_face = cv2.resize(gray_face, (96, 96))
+        
+        # <-- Log untuk deteksi yang berhasil ditambahkan
+        print(f"[OK] Wajah terdeteksi di: {filename}")
         
         return resized_face
 
     except Exception as e:
-        # Memberikan nama file saat terjadi error agar lebih informatif
-        print(f"Wajah tidak terdeteksi atau error di DeepFace pada file {os.path.basename(img_path)}: {e}")
+        # <-- Log untuk deteksi yang gagal
+        print(f"[GAGAL] Wajah tidak terdeteksi di: {filename}")
         return None
