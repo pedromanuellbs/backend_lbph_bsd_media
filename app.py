@@ -151,9 +151,14 @@ def register_face():
 
     cv2.imwrite(raw_path, cropped)
     firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
-    # metrics = train_and_evaluate()
+    
+    # Pilih salah satu:
+    # Jika tidak ingin training model:
+    return jsonify({'success': True, 'firebase_image_url': firebase_url})
 
-    return jsonify({ 'success': True, 'metrics': metrics, 'firebase_image_url': firebase_url })
+    # Jika ingin training model dan mengembalikan metrics, gunakan ini (uncomment dua baris berikut):
+    # metrics = train_and_evaluate()
+    # return jsonify({'success': True, 'metrics': metrics, 'firebase_image_url': firebase_url})
 
 @app.route('/verify_face', methods=['POST'])
 def verify_face():
