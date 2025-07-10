@@ -1,7 +1,7 @@
 # 1. Gunakan base image python yang ringan
 FROM python:3.10-slim
 
-# 2. Install system dependencies, termasuk wget untuk mengunduh model
+# 2. Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
@@ -18,10 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 3. Tetapkan direktori kerja di dalam container
 WORKDIR /app
 
-# 4. "Panggang" model DeepFace ke dalam image saat build
-# Ini mencegah unduhan saat runtime yang menyebabkan timeout.
+# 4. "Panggang" model FaceNet (lebih ringan) ke dalam image
 RUN mkdir -p /root/.deepface/weights \
- && wget -q -O /root/.deepface/weights/vgg_face_weights.h5 https://github.com/serengil/deepface_models/releases/download/v1.0/vgg_face_weights.h5
+ && wget -q -O /root/.deepface/weights/facenet_weights.h5 https://github.com/serengil/deepface_models/releases/download/v1.0/facenet_weights.h5
 
 # 5. Salin HANYA file requirements.txt terlebih dahulu untuk caching
 COPY requirements.txt .

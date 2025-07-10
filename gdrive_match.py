@@ -89,21 +89,21 @@ def download_drive_photo(file_id):
 # --- PERUBAHAN UTAMA DIMULAI DI SINI ---
 
 # Di gdrive_match.py
-def is_face_match(user_face_path, target_face_path, threshold=0.4): # Tambahkan parameter
+def is_face_match(user_face_path, target_face_path, threshold=0.4):
     """
     Memverifikasi apakah dua gambar wajah adalah orang yang sama menggunakan DeepFace.
     """
-    print(f"--- Memulai is_face_match (DeepFace) ---")
+    print(f"--- Memulai is_face_match (Model: FaceNet) ---")
     try:
         result = DeepFace.verify(
             img1_path=user_face_path, 
             img2_path=target_face_path,
-            model_name="VGG-Face",
+            model_name="FaceNet",  # <-- UBAHAN UTAMA DI SINI
             enforce_detection=True
         )
         
         distance = result['distance']
-        # LOGIKA BARU: Jarak harus LEBIH KECIL dari atau sama dengan threshold
+        # Logika tetap sama: Jarak lebih kecil berarti lebih mirip
         is_match = distance <= threshold
         
         print(f"  > Jarak: {distance:.4f}, Ambang Batas: {threshold}")
