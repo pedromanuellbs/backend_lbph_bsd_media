@@ -74,8 +74,5 @@ def process_single_job():
 
 # --- Jalankan proses HANYA SATU KALI ---
 if __name__ == "__main__":
-    print("--- Worker mode daemon ---")
-    while True:
-        process_single_job()
-        print("Worker sleep 10s...")
-        time.sleep(10)
+    print("--- Worker mode sekali jalan ---")
+    process_single_job()
