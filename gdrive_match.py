@@ -170,12 +170,22 @@ def find_matching_photos(user_face_path, session_id, folder_id, threshold=0.593)
     return matched_in_folder
 
 
-def find_all_matching_photos(user_face_path, all_sessions_data, threshold=0.593): # Tambahkan parameter
+def find_all_matching_photos(user_face_path, all_sessions_data, threshold=0.593):
+    """
+    Mencocokkan wajah user dengan foto-foto di semua session (semua folder Google Drive).
+
+    Args:
+        user_face_path (str): Path file gambar wajah user.
+        all_sessions_data (list[dict]): List dict dengan sessionId & folderId untuk setiap sesi foto.
+        threshold (float): Threshold kecocokan face match (semakin rendah, semakin ketat).
+
+    Returns:
+        list[dict]: List foto yang cocok dari semua session.
+    """
     all_matches = []
     for session in all_sessions_data:
         session_id = session['sessionId']
         folder_id = session['folderId']
-        # Teruskan threshold ke fungsi berikutnya
         matches = find_matching_photos(user_face_path, session_id, folder_id, threshold=threshold)
         all_matches.extend(matches)
     return all_matches
