@@ -1,10 +1,11 @@
 # 1. Gunakan base image python yang ringan
 FROM python:3.10-slim
 
-# 2. Install system dependencies yang dibutuhkan, termasuk cmake untuk dlib
+# 2. Install system dependencies, termasuk cmake dan python3-dev
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
+    python3-dev \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
