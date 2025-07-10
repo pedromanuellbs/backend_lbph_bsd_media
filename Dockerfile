@@ -1,7 +1,7 @@
 # 1. Gunakan base image python yang ringan
 FROM python:3.10-slim
 
-# 2. Install system dependencies, ganti wget dengan curl
+# 2. Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
@@ -18,21 +18,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 3. Tetapkan direktori kerja di dalam container
 WORKDIR /app
 
-# 4. "Panggang" model SFace (menggunakan curl)
+# 4. TAMBAHKAN SWAP FILE UNTUK MEMORI CADANGAN
+RUN fallocate -l 1G /swapfile \
+ && chmod 600 /swapfile \
+ && mkswap /swapfile \
+ && swapon /swapfile
+
+# 5. "Panggang" model SFace (ringan) ke dalam image
 RUN mkdir -p /root/.deepface/weights \
  && curl -sL -o /root/.deepface/weights/sface_weights.h5 https://github.com/serengil/deepface_models/releases/download/v1.0/sface_weights.h5
 
-# 5. Salin HANYA file requirements.txt terlebih dahulu untuk caching
+# 6. Salin requirements.txt
 COPY requirements.txt .
 
-# 6. Install semua Pustaka Python dari satu sumber
+# 7. Install Pustaka Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 7. Salin sisa kode aplikasi Anda
+# 8. Salin sisa kode
 COPY . .
 
-# 8. Expose port yang digunakan aplikasi
+# 9. Expose port
 EXPOSE 8000
 
-# 9. Perintah untuk menjalankan aplikasi saat container dimulai
+# 10. Perintah untuk menjalankan aplikasi
 CMD ["python", "app.py"]
