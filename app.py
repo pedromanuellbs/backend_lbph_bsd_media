@@ -10,10 +10,11 @@ from face_preprocessing import detect_and_crop
 from face_data import train_and_evaluate
 
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP
+from uuid import uuid4 # Untuk membuat ID tugas yang unik
 
 # --- Import dan setup Firebase Admin SDK ---
 import firebase_admin
-from firebase_admin import credentials, storage
+from firebase_admin import credentials, storage, firestore # <--- TAMBAHKAN firestore di sini
 
 from gdrive_match import find_matching_photos
 
@@ -197,49 +198,57 @@ import traceback
 
 # Di file: app.py
 
-@app.route('/find_my_photos', methods=['POST'])
-def find_my_photos():
-    try:
-         # ===== TAMBAHKAN PRINT INI SEBAGAI PENANDA =====
-        print("\n===== Endpoint /find_my_photos DIPANGGIL (VERSI KODE TERBARU) =====\n")
-        # ===============================================
+# GANTI endpoint /find_my_photos
+@app.route('/start_photo_search', methods=['POST'])
+def start_photo_search():
+    print("\n===== Endpoint /start_photo_search DIPANGGIL =====\n")
+    if 'image' not in request.files:
+        return jsonify({'success': False, 'error': 'File gambar tidak ditemukan'}), 400
 
-        if 'image' not in request.files:
-            return jsonify({'success': False, 'error': 'File gambar tidak ditemukan'}), 400
+    image = request.files['image']
+    
+    # Buat ID unik untuk tugas ini
+    job_id = str(uuid4())
+    
+    # Simpan gambar klien ke Firebase Storage agar bisa diakses worker
+    # Anda sudah punya fungsi upload_to_firebase, kita pakai itu
+    # Misal user_id untuk file sementara adalah 'search-requests'
+    filename = f"{job_id}.jpg"
+    tmp_path = f"/tmp/{filename}" # Gunakan folder /tmp yang biasanya tersedia
+    image.save(tmp_path)
+    
+    client_image_url = upload_to_firebase(tmp_path, "search-requests", filename)
+    os.remove(tmp_path)
 
-        image = request.files['image']
-        user_tmp = 'tmp_user.jpg'
-        image.save(user_tmp)
+    # Buat dokumen tugas baru di Firestore
+    db = firestore.client()
+    job_ref = db.collection('photo_search_jobs').document(job_id)
+    job_ref.set({
+        'status': 'pending',
+        'createdAt': firestore.SERVER_TIMESTAMP,
+        'clientImageURL': client_image_url,
+        'results': [],
+        'error': None
+    })
 
-        # --- TAMBAHKAN BLOK PEMBERSIH DI SINI ---
-        img = cv2.imread(user_tmp)
-        if img is None:
-            return jsonify({'success': False, 'error': 'Gagal memuat file gambar klien'}), 400
+    print(f"Tugas pencarian dibuat dengan job_id: {job_id}")
+    return jsonify({'success': True, 'job_id': job_id})
+
+# TAMBAHKAN endpoint baru ini
+@app.route('/get_search_status', methods=['GET'])
+def get_search_status():
+    job_id = request.args.get('job_id')
+    if not job_id:
+        return jsonify({'success': False, 'error': 'Parameter job_id wajib diisi'}), 400
         
-        # Konversi paksa ke format 8-bit, sama seperti perbaikan sebelumnya
-        if img.dtype != np.uint8:
-            img = cv2.convertScaleAbs(img)
-        
-        # Simpan kembali gambar yang sudah bersih
-        cv2.imwrite(user_tmp, img)
-        # -----------------------------------------
+    db = firestore.client()
+    job_ref = db.collection('photo_search_jobs').document(job_id)
+    job_doc = job_ref.get()
 
-        # Load model
-        # lbph_model = cv2.face.LBPHFaceRecognizer_create()
-        # lbph_model.read('lbph_model.xml')
+    if not job_doc.exists:
+        return jsonify({'success': False, 'error': 'Tugas tidak ditemukan'}), 404
 
-        # Get folder ids
-        all_folder_ids = get_all_gdrive_folder_ids()
-        matches = find_all_matching_photos(user_tmp, all_folder_ids, threshold=0.75) # Nilai baru untuk korelasi
-
-        # Tambahkan log response di backend
-        print("RESPONSE:", matches)
-
-        return jsonify({'success': True, 'matched_photos': matches})
-    except Exception as e:
-        print("===== ERROR TRACEBACK =====")
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+    return jsonify({'success': True, 'job_data': job_doc.to_dict()})
 
 
 
