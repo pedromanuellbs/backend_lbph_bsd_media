@@ -151,7 +151,7 @@ def register_face():
 
     cv2.imwrite(raw_path, cropped)
     firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
-    metrics = train_and_evaluate()
+    # metrics = train_and_evaluate()
 
     return jsonify({ 'success': True, 'metrics': metrics, 'firebase_image_url': firebase_url })
 
@@ -282,4 +282,5 @@ def debug_ls3():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
