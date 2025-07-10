@@ -1,3 +1,5 @@
+# gdrive_match.py
+
 import os
 import json
 from googleapiclient.discovery import build
@@ -5,9 +7,20 @@ from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
 import cv2
 import numpy as np
-from deepface import DeepFace # <-- PUSTAKA BARU
+from deepface import DeepFace
+
+# ===================================================================
+# --- PERUBAHAN 1: MUAT MODEL DI SINI, HANYA SEKALI SAAT WORKER MULAI ---
+print("--- Memuat model SFace ke memori... ---")
+# Fungsi build_model akan memuat model dan menyimpannya di variabel ini
+sface_model = DeepFace.build_model("SFace")
+print("--- Model SFace berhasil dimuat. Siap bekerja. ---")
+# ===================================================================
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
+
+# ... (fungsi get_all_gdrive_folder_ids, get_drive_service, dll. tetap sama) ...
+# ... (pastikan semua fungsi lain di antara ini tidak berubah) ...
 
 def get_all_gdrive_folder_ids():
     """
@@ -86,25 +99,27 @@ def download_drive_photo(file_id):
         img = cv2.convertScaleAbs(img)
     return img
 
-# --- PERUBAHAN UTAMA DIMULAI DI SINI ---
 
-# Di gdrive_match.py
-def is_face_match(user_face_path, target_face_path, threshold=0.593): # Threshold baru untuk SFace
+def is_face_match(user_face_path, target_face_path, threshold=0.593):
     """
     Memverifikasi apakah dua gambar wajah adalah orang yang sama menggunakan DeepFace.
     """
-    print(f"--- Memulai is_face_match (Model: SFace) ---") # Model baru
+    print(f"--- Memulai is_face_match (Model: SFace) ---")
     try:
+        # ===================================================================
+        # --- PERUBAHAN 2: GUNAKAN MODEL YANG SUDAH DIMUAT SEBELUMNYA ---
         result = DeepFace.verify(
-            img1_path=user_face_path, 
+            img1_path=user_face_path,
             img2_path=target_face_path,
-            model_name="SFace",  # <-- UBAHAN UTAMA DI SINI
+            model_name="SFace",
+            model=sface_model,  # <-- Beritahu DeepFace untuk pakai model ini
             enforce_detection=True
         )
-        
+        # ===================================================================
+
         distance = result['distance']
         is_match = distance <= threshold
-        
+
         print(f"  > Jarak: {distance:.4f}, Ambang Batas: {threshold}")
         print(f"  > Hasil Verifikasi: {'COCOK' if is_match else 'TIDAK COCOK'}")
         print("--- Selesai is_face_match ---\n")
@@ -114,20 +129,18 @@ def is_face_match(user_face_path, target_face_path, threshold=0.593): # Threshol
         print(f"  > Error DeepFace: {e}")
         print("--- Selesai is_face_match ---\n")
         return False
-    
-def find_matching_photos(user_face_path, session_id, folder_id, threshold=0.4): # Tambahkan parameter
-    """
-    Mencari foto yang cocok di dalam satu folder Google Drive.
-    Fungsi ini disesuaikan untuk bekerja dengan is_face_match yang baru.
-    """
+
+# ... (sisa fungsi find_matching_photos dan find_all_matching_photos tetap sama) ...
+def find_matching_photos(user_face_path, session_id, folder_id, threshold=0.593): # Tambahkan parameter
+    # ... (kode lainnya tetap sama) ...
     photos_in_folder = list_photo_links(folder_id)
     matched_in_folder = []
 
     print(f"Memeriksa {len(photos_in_folder)} foto di folder {folder_id}...")
     
     # Definisikan path untuk menyimpan file target sementara
-    tmp_target_path = "tmp_target_image.jpg"
-
+    tmp_target_path = "/tmp/tmp_target_image.jpg"
+    
     for photo in photos_in_folder:
         try:
             print(f"  -> Memproses foto: {photo['name']} ({photo['id']})")
@@ -142,7 +155,7 @@ def find_matching_photos(user_face_path, session_id, folder_id, threshold=0.4): 
             cv2.imwrite(tmp_target_path, target_img_data)
 
             # 3. Lakukan perbandingan wajah menggunakan path file
-            if is_face_match(user_face_path, tmp_target_path):
+            if is_face_match(user_face_path, tmp_target_path, threshold=threshold):
                 file_id = photo['id']
                 public_image_url = f'https://drive.google.com/uc?export=view&id={file_id}'
 
@@ -164,19 +177,13 @@ def find_matching_photos(user_face_path, session_id, folder_id, threshold=0.4): 
             
     return matched_in_folder
 
-def find_all_matching_photos(user_face_path, all_sessions_data, threshold=0.4): # Tambahkan parameter
-    """
-    Menjalankan pencarian di semua folder yang didapat dari Firestore.
-    Fungsi ini tidak berubah, hanya memanggil find_matching_photos yang sudah disesuaikan.
-    """
+
+def find_all_matching_photos(user_face_path, all_sessions_data, threshold=0.593): # Tambahkan parameter
     all_matches = []
     for session in all_sessions_data:
         session_id = session['sessionId']
         folder_id = session['folderId']
-        # Memanggil fungsi yang sudah di-update
-        matches = find_matching_photos(user_face_path, session_id, folder_id)
+        # Teruskan threshold ke fungsi berikutnya
+        matches = find_matching_photos(user_face_path, session_id, folder_id, threshold=threshold)
         all_matches.extend(matches)
     return all_matches
-
-# Catatan: Fungsi detect_and_crop_face(img) yang lama telah dihapus 
-# karena sudah tidak diperlukan lagi. Logika deteksi ditangani oleh DeepFace.
