@@ -11,10 +11,7 @@ from deepface import DeepFace
 
 # ===================================================================
 # --- PERUBAHAN 1: MUAT MODEL DI SINI, HANYA SEKALI SAAT WORKER MULAI ---
-print("--- Memuat model SFace ke memori... ---")
 # Fungsi build_model akan memuat model dan menyimpannya di variabel ini
-sface_model = DeepFace.build_model("SFace")
-print("--- Model SFace berhasil dimuat. Siap bekerja. ---")
 # ===================================================================
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
@@ -100,22 +97,17 @@ def download_drive_photo(file_id):
     return img
 
 
+# Ganti dengan versi ini
 def is_face_match(user_face_path, target_face_path, threshold=0.593):
-    """
-    Memverifikasi apakah dua gambar wajah adalah orang yang sama menggunakan DeepFace.
-    """
     print(f"--- Memulai is_face_match (Model: SFace) ---")
     try:
-        # ===================================================================
-        # --- PERUBAHAN 2: GUNAKAN MODEL YANG SUDAH DIMUAT SEBELUMNYA ---
+        # Panggil verify() seperti biasa, tanpa argumen 'model'
         result = DeepFace.verify(
-            img1_path=user_face_path,
+            img1_path=user_face_path, 
             img2_path=target_face_path,
             model_name="SFace",
-            model=sface_model,  # <-- Beritahu DeepFace untuk pakai model ini
             enforce_detection=True
         )
-        # ===================================================================
 
         distance = result['distance']
         is_match = distance <= threshold
