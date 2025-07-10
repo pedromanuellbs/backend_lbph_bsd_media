@@ -1,8 +1,8 @@
-# 1. Base image ringan
+# 1. Gunakan base image python yang ringan
 FROM python:3.10-slim
 
-# 2. Install system deps untuk OpenCV headless, Pillow, dan kebutuhan build
-RUN apt-get update && apt-get install -y \
+# 2. Install system dependencies yang dibutuhkan
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libglib2.0-0 \
     libsm6 \
@@ -10,22 +10,26 @@ RUN apt-get update && apt-get install -y \
     libxrender-dev \
     libgl1-mesa-glx \
     libjpeg-dev \
-  && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/*
 
+# 3. Tetapkan direktori kerja di dalam container
 WORKDIR /app
 
-# 3. Copy file requirements.txt lebih dulu
+# 4. Salin HANYA file requirements.txt terlebih dahulu
+# Ini memanfaatkan Docker cache. Layer ini tidak akan di-build ulang
+# jika hanya kode aplikasi Anda yang berubah.
 COPY requirements.txt .
 
-# 4. Copy kode aplikasi
+# 5. Install semua Pustaka Python dari satu sumber
+# Pastikan requirements.txt Anda sudah berisi semua yang dibutuhkan
+# (termasuk torch, torchvision, tensorflow, deepface, dll).
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 6. Salin sisa kode aplikasi Anda
 COPY . .
 
-# 5. Upgrade pip, install CPU-only PyTorch & deps, lalu install sisa requirements
-RUN pip install --upgrade pip \
-  && pip install torch==2.2.2+cpu torchvision==0.17.2+cpu \
-       --extra-index-url https://download.pytorch.org/whl/cpu \
-  && pip install -r requirements.txt
-
-# 6. Expose port dan jalankan aplikasi
+# 7. Expose port yang digunakan aplikasi
 EXPOSE 8000
+
+# 8. Perintah untuk menjalankan aplikasi saat container dimulai
 CMD ["python", "app.py"]
