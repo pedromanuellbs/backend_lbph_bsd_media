@@ -88,34 +88,35 @@ def download_drive_photo(file_id):
 
 # --- PERUBAHAN UTAMA DIMULAI DI SINI ---
 
-def is_face_match(user_face_path, target_face_path):
+# Di gdrive_match.py
+def is_face_match(user_face_path, target_face_path, threshold=0.4): # Tambahkan parameter
     """
     Memverifikasi apakah dua gambar wajah adalah orang yang sama menggunakan DeepFace.
-    Ini adalah fungsi yang diganti total untuk akurasi tinggi.
     """
-    print(f"--- Memulai is_face_match (DeepFace) antara '{os.path.basename(user_face_path)}' dan '{os.path.basename(target_face_path)}' ---")
+    print(f"--- Memulai is_face_match (DeepFace) ---")
     try:
-        # DeepFace.verify() secara otomatis menangani deteksi, cropping, dan perbandingan.
         result = DeepFace.verify(
             img1_path=user_face_path, 
             img2_path=target_face_path,
-            model_name="VGG-Face",  # Model yang kuat untuk pengenalan wajah umum
-            enforce_detection=True  # Wajibkan ada wajah di kedua gambar
+            model_name="VGG-Face",
+            enforce_detection=True
         )
         
-        is_match = result['verified']
         distance = result['distance']
-        print(f"  > Hasil Verifikasi: {'COCOK' if is_match else 'TIDAK COCOK'} (Jarak: {distance:.4f})")
+        # LOGIKA BARU: Jarak harus LEBIH KECIL dari atau sama dengan threshold
+        is_match = distance <= threshold
+        
+        print(f"  > Jarak: {distance:.4f}, Ambang Batas: {threshold}")
+        print(f"  > Hasil Verifikasi: {'COCOK' if is_match else 'TIDAK COCOK'}")
         print("--- Selesai is_face_match ---\n")
         return is_match
 
     except Exception as e:
-        # Exception ini biasanya muncul jika DeepFace tidak dapat menemukan wajah
-        print(f"  > Error DeepFace: Tidak dapat memproses gambar. {e}")
+        print(f"  > Error DeepFace: {e}")
         print("--- Selesai is_face_match ---\n")
         return False
 
-def find_matching_photos(user_face_path, session_id, folder_id):
+def find_matching_photos(user_face_path, session_id, folder_id, threshold=0.4): # Tambahkan parameter
     """
     Mencari foto yang cocok di dalam satu folder Google Drive.
     Fungsi ini disesuaikan untuk bekerja dengan is_face_match yang baru.
@@ -164,7 +165,7 @@ def find_matching_photos(user_face_path, session_id, folder_id):
             
     return matched_in_folder
 
-def find_all_matching_photos(user_face_path, all_sessions_data):
+def find_all_matching_photos(user_face_path, all_sessions_data, threshold=0.4): # Tambahkan parameter
     """
     Menjalankan pencarian di semua folder yang didapat dari Firestore.
     Fungsi ini tidak berubah, hanya memanggil find_matching_photos yang sudah disesuaikan.
