@@ -1,0 +1,33 @@
+0:Abdullah_Gul
+1:Akshay Kumar
+2:Alejandro_Toledo
+3:Alexandra Daddario
+4:Alia
+5:Alia Bhatt
+6:Alvaro_Uribe
+7:Amelie_Mauresmo
+8:Amitabh Bachchan
+9:Andre_Agassi
+10:Andy Samberg
+11:Andy_Roddick
+12:Angelina_Jolie
+13:Anna_Kournikova
+14:Anushka Sharma
+15:Ariel_Sharon
+16:Arnold_Schwarzenegger
+17:Atal_Bihari_Vajpayee
+18:Benerje
+19:Billie Eilish
+20:Bill_Clinton
+21:Bill_Gates
+22:Bill_Simon
+23:Brad Pitt
+24:Camila Cabello
+25:Carlos_Menem
+26:Carlos_Moya
+27:Charlize Theron
+28:Claire Holt
+29:Colin_Powell
+30:Courtney Cox
+31:Darling
+32:David_Beckham

@@ -1,17 +1,31 @@
+# File: face_preprocessing.py
+import os
 import cv2
-from facenet_pytorch import MTCNN
-from PIL import Image
+from deepface import DeepFace
+import numpy as np
 
-# Inisialisasi sekali saja saat module di-load
-mtcnn = MTCNN(image_size=96, margin=0)
-
-def detect_and_crop(img_path):
-    """Baca gambar, deteksi wajah dengan MTCNN, crop & kembalikan grayscale (96×96)."""
-    img = Image.open(img_path)
-    face = mtcnn(img)  # Tensor (3,96,96) atau None
-    if face is None:
+def detect_and_crop(img_data):
+    """
+    Mendeteksi wajah dari DATA GAMBAR (bukan path), crop, resize, dan konversi.
+    Mengembalikan gambar grayscale 96x96 jika berhasil, atau None jika gagal.
+    """
+    try:
+        # PAKAI MTCNN SAJA
+        face_objs = DeepFace.extract_faces(
+            img_path=img_data,
+            detector_backend='mtcnn',
+            enforce_detection=True,
+            align=False
+        )
+        
+        first_face = face_objs[0]
+        face_img = first_face['face']
+        
+        face_img_uint8 = (face_img * 255).astype(np.uint8)
+        gray_face = cv2.cvtColor(face_img_uint8, cv2.COLOR_RGB2GRAY)
+        resized_face = cv2.resize(gray_face, (96, 96))
+        
+        return resized_face
+        
+    except Exception as e:
         return None
-    # Konversi tensor ke array grayscale uint8
-    gray = face.permute(1, 2, 0).mul(255).byte().numpy()
-    gray = cv2.cvtColor(gray, cv2.COLOR_RGB2GRAY)
-    return gray

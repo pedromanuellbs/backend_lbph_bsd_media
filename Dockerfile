@@ -1,28 +1,34 @@
+# Gunakan base image Python 3.10
 FROM python:3.10-slim
 
-# 1) Install system-deps untuk OpenCV, Pillow, dan PyTorch CPU
+# Set direktori kerja di dalam container
+WORKDIR /app
+
+# Non-aktifkan buffer output Python
+ENV PYTHONUNBUFFERED 1
+
+# Update dan install pustaka sistem yang dibutuhkan
 RUN apt-get update && apt-get install -y \
     build-essential \
+    cmake \
+    libgl1-mesa-glx \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
     libxrender-dev \
-    libgl1-mesa-glx \
-    libjpeg-dev \
-  && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
-# 2) Copy hanya requirements.txt dulu untuk leverage Docker cache
+# Salin file requirements terlebih dahulu untuk caching
 COPY requirements.txt .
 
-# 3) Upgrade pip & install Python deps (termasuk facenet-pytorch, torch, torchvision, scikit-learn, Pillow, dsb)
-RUN pip install --upgrade pip \
- && pip install -r requirements.txt
+# Install semua pustaka Python
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 4) Baru copy seluruh source
+# Salin semua file kode aplikasi Anda ke dalam container
 COPY . .
 
-EXPOSE 8000
-
-CMD ["python", "app.py"]
+# =============================================================
+# === BARIS BARU: JALANKAN SCRIPT UNTUK DOWNLOAD MODEL ML ===
+# =============================================================
+# Perintah untuk menjalankan aplikasi saat container dimulai
+CMD ["gunicorn", "--worker-class", "gevent", "--timeout", "120", "-b", "0.0.0.0:8080", "app:app"]

@@ -1,0 +1,10 @@
+db-ta-bsd-media-firebase-adminsdk-fbsvc-b70eb2f920.json
+
+
+# Python
+__pycache__/
+*.pyc
+
+# Virtual Environment
+.venv/
+backend_lbph_bsd_media_clean/
