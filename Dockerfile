@@ -41,7 +41,7 @@ RUN pip install --no-cache-dir \
 
 # Tahap 2: Instal NumPy dan Pillow (seringkali pra-syarat untuk ML/CV)
 RUN pip install --no-cache-dir \
-    numpy==1.23.5 \
+    numpy==1.24.4 \
     Pillow==10.2.0
 
 # Tahap 3: Instal PyTorch dan Torchvision (dengan index-url yang krusial)
@@ -59,7 +59,7 @@ RUN pip install --no-cache-dir opencv-contrib-python
 # --- PERUBAHAN DI SINI: Pisahkan dua paket ini ---
 # Tahap 5: Instal Scikit-learn
 RUN pip install --no-cache-dir \
-    scikit-learn==1.1.3 # <--- UBAH VERSI INI
+    scikit-learn==1.1.3
 
 # Tahap 6: Instal Facenet-PyTorch (Ini harusnya baik-baik saja jika scikit-learn berhasil)
 RUN pip install --no-cache-dir \
