@@ -2,6 +2,7 @@ import os
 import json
 import traceback
 import numpy as np
+import time
 
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
@@ -33,11 +34,16 @@ if not firebase_admin._apps:
 
 # Fungsi helper untuk upload file ke Firebase Storage
 def upload_to_firebase(local_file, user_id, filename):
-    """Upload file ke Firebase Storage dan return URL download-nya"""
-    bucket = storage.bucket()  # <--- Tambahin baris ini!
+    bucket = storage.bucket('db-ta-bsd-media.firebasestorage.app')
     blob = bucket.blob(f"face-dataset/{user_id}/{filename}")
-    blob.upload_from_filename(local_file)
-    blob.make_public()  # Atur permission sesuai kebutuhan
+    
+    # Upload dengan kualitas JPEG 90%
+    blob.upload_from_filename(
+        local_file,
+        content_type='image/jpeg',
+        predefined_acl='publicRead'
+    )
+    
     return blob.public_url
 
 app = Flask(__name__)
@@ -100,66 +106,116 @@ def home():
 @app.route('/register_face', methods=['POST'])
 def register_face():
     print("===== MULAI register_face =====")
-    print("request.files:", request.files)
-    print("request.form:", request.form)
+    start_time = time.time()
+    
+    # Validasi input
     user_id = request.form.get('user_id')
-    image   = request.files.get('image')
-    if image:
-        print("image.filename:", image.filename)
-        print("image.content_length:", image.content_length)
-        # Tambahan: print file pointer size
-        try:
-            image.seek(0, 2)  # move to end
-            file_size = image.tell()
-            image.seek(0)     # reset pointer
-        except Exception as e:
-            file_size = f"ERROR: {e}"
-        print("image file size (tell):", file_size)
-    else:
-        print("Tidak ada file 'image' di request!")
-
-    # Validasi awal
+    image = request.files.get('image')
+    
     if not user_id or not image:
         return jsonify({'success': False, 'error': 'user_id atau file gambar tidak valid/kosong'}), 400
+    
+    # Validasi ekstensi file
+    allowed_extensions = ['.jpg', '.jpeg', '.png']
+    if not any(image.filename.lower().endswith(ext) for ext in allowed_extensions):
+        return jsonify({'success': False, 'error': 'Format gambar tidak didukung. Gunakan JPG, JPEG, atau PNG'}), 400
+    
+    # Validasi ukuran file (maksimal 5 MB)
     try:
-        pos = image.tell()
-        chunk = image.read(10)
-        image.seek(pos)
-        if not chunk:
-            return jsonify({'success': False, 'error': 'File gambar kosong'}), 400
+        # Simpan sementara untuk cek ukuran
+        temp_path = f"/tmp/{uuid4().hex}.tmp"
+        image.save(temp_path)
+        file_size = os.path.getsize(temp_path)
+        os.remove(temp_path)
+        
+        if file_size > 5 * 1024 * 1024:  # 5MB
+            return jsonify({'success': False, 'error': 'Ukuran gambar terlalu besar (maksimal 5MB)'}), 400
     except Exception as e:
-        print("Error cek isi file:", e)
-        return jsonify({'success': False, 'error': f'File gambar error: {e}'}), 400
-
-    # Simpan gambar ke folder user baru/eksisting
+        print(f"Error validasi ukuran file: {e}")
+        return jsonify({'success': False, 'error': 'Gagal memvalidasi ukuran file'}), 400
+    
+    # Simpan gambar asli ke folder user
     try:
         raw_path = save_face_image(user_id, image)
+        print(f"Gambar disimpan sementara di: {raw_path}")
     except Exception as e:
-        print("Error saat menyimpan file:", e)
-        return jsonify({'success': False, 'error': f'Gagal menyimpan file: {e}'}), 400
+        print(f"Error menyimpan gambar: {e}")
+        return jsonify({'success': False, 'error': f'Gagal menyimpan file: {e}'}), 500
 
-    cropped  = detect_and_crop(raw_path)
-
-    if cropped is None or cropped.size == 0:
-        print(f"Wajah tidak terdeteksi untuk user_id: {user_id}. File asli: {image.filename}")
+    # Proses deteksi dan crop wajah
+    try:
+        # Panggil fungsi detect_and_crop
+        cropped = detect_and_crop(raw_path)
+    except Exception as e:
+        print(f"Error selama deteksi wajah: {e}")
+        # Hapus file yang gagal
         try:
             os.remove(raw_path)
-            print(f"File gagal {raw_path} telah dihapus.")
-        except OSError as e:
-            print(f"Error saat menghapus file gagal: {e}")
-        return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi pada gambar yang diunggah. Pastikan gambar jelas dan menampilkan wajah.'}), 400
+        except:
+            pass
+        return jsonify({'success': False, 'error': f'Gagal memproses wajah: {e}'}), 500
 
+    # Cek apakah wajah terdeteksi
+    if cropped is None:
+        print(f"Wajah tidak terdeteksi untuk user: {user_id}")
+        try:
+            os.remove(raw_path)
+        except:
+            pass
+        return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi. Pastikan wajah terlihat jelas dan tidak tertutup.'}), 400
+
+    # Timpa file asli dengan hasil crop (dalam format grayscale)
     cv2.imwrite(raw_path, cropped)
-    firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
-    return jsonify({'success': True, 'firebase_image_url': firebase_url})
-    
-    # Pilih salah satu:
-    # Jika tidak ingin training model:
-    # return jsonify({'success': True, 'firebase_image_url': firebase_url})
+    print(f"Wajah berhasil di-crop dan disimpan ulang di: {raw_path}")
 
-    # Jika ingin training model dan mengembalikan metrics, gunakan ini (uncomment dua baris berikut):
-    # metrics = train_and_evaluate()
-    # return jsonify({'success': True, 'metrics': metrics, 'firebase_image_url': firebase_url})
+    # Upload ke Firebase Storage
+    try:
+        firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
+        print(f"Gambar diupload ke Firebase: {firebase_url}")
+    except Exception as e:
+        print(f"Error upload Firebase: {e}")
+        return jsonify({'success': False, 'error': f'Gagal mengunggah ke Firebase: {e}'}), 500
+
+    # Latih ulang model dengan menambahkan data baru (opsional, bisa di-comment jika tidak ingin langsung train)
+    try:
+        print("Memulai pelatihan model...")
+        metrics = train_and_evaluate()
+        print(f"Model dilatih ulang. Metrics: {metrics}")
+    except Exception as e:
+        print(f"Error selama pelatihan model: {e}")
+        # Tidak mengembalikan error ke klien, karena registrasi sudah berhasil
+        # Tapi log error untuk debugging
+
+    elapsed = time.time() - start_time
+    print(f"Registrasi wajah selesai dalam {elapsed:.2f} detik")
+    
+    return jsonify({
+        'success': True,
+        'firebase_image_url': firebase_url,
+        'processing_time': elapsed
+    })
+
+def save_face_image(user_id: str, image_file) -> str:
+    """
+    Simpan gambar upload ke folder faces/<user_id>/N.jpg
+    Folder user_id akan otomatis dibuat kalau belum ada.
+    Mengembalikan path file yang disimpan.
+    """
+    user_dir = os.path.join(FACES_DIR, user_id)
+    os.makedirs(user_dir, exist_ok=True)
+    
+    # Hitung file yang sudah ada
+    existing_files = [f for f in os.listdir(user_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+    next_num = len(existing_files) + 1
+    
+    # Buat nama file baru
+    dst = os.path.join(user_dir, f"{next_num}.jpg")
+    
+    # Simpan file
+    image_file.save(dst)
+    
+    return dst
+
 
 @app.route('/verify_face', methods=['POST'])
 def verify_face():

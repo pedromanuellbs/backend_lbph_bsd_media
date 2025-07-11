@@ -36,10 +36,10 @@
 
 # Di file: face_preprocessing.py
 
-import os
-import cv2
-from deepface import DeepFace
-import numpy as np
+# import os
+# import cv2
+# from deepface import DeepFace
+# import numpy as np
 
 # def detect_and_crop(img_path):
 #     """
@@ -128,36 +128,63 @@ import cv2
 from deepface import DeepFace
 import numpy as np
 
+# def detect_and_crop(img_path):
+#     filename = os.path.basename(img_path)
+#     try:
+#         # Ganti backend ke opencv yang lebih cepat
+#         face_obj = DeepFace.extract_faces(
+#             img_path=img_path,
+#             enforce_detection=True,
+#             detector_backend='opencv',  # <-- PERUBAHAN UTAMA
+#             align=False
+#         )
+        
+#         face_img = face_obj[0]['face']
+#         face_img_uint8 = (face_img * 255).astype(np.uint8)
+#         gray_face = cv2.cvtColor(face_img_uint8, cv2.COLOR_RGB2GRAY)
+#         resized_face = cv2.resize(gray_face, (96, 96))
+        
+#         print(f"[SUKSES] Wajah terdeteksi: {filename}")
+#         return resized_face
+
+#     except Exception as e:
+#         print(f"[GAGAL] Deteksi wajah: {filename} | Error: {str(e)}")
+#         return None
+
+
 def detect_and_crop(img_path):
     """
-    Mendeteksi satu wajah dari gambar, memotong, mengubah ukuran menjadi 96x96,
-    mengonversi ke grayscale, dan mengembalikannya sebagai array NumPy.
-    
-    Fungsi ini adalah langkah pre-processing untuk data latih model LBPH.
+    Mendeteksi wajah pada gambar, crop, resize ke 96x96, dan konversi ke grayscale.
+    Mengembalikan gambar grayscale 96x96 jika berhasil, atau None jika gagal.
     """
-    # Dapatkan nama file untuk logging
     filename = os.path.basename(img_path)
+    print(f"Memproses: {filename}")
     
     try:
-        # DeepFace akan mendeteksi dan memotong wajah dari gambar
-        face_obj = DeepFace.extract_faces(
+        # Gunakan backend opencv untuk deteksi wajah
+        face_objs = DeepFace.extract_faces(
             img_path=img_path,
+            detector_backend='opencv',
             enforce_detection=True,
-            detector_backend='mtcnn',  # <-- Diubah sesuai permintaan
             align=False
         )
         
-        face_img = face_obj[0]['face']
+        # Ambil wajah pertama (asumsi hanya satu wajah)
+        first_face = face_objs[0]
+        face_img = first_face['face']  # Ini adalah array numpy dengan nilai 0-1
+        
+        # Konversi ke uint8 (0-255)
         face_img_uint8 = (face_img * 255).astype(np.uint8)
+        
+        # Konversi ke grayscale
         gray_face = cv2.cvtColor(face_img_uint8, cv2.COLOR_RGB2GRAY)
+        
+        # Resize ke 96x96
         resized_face = cv2.resize(gray_face, (96, 96))
         
-        # <-- Log untuk deteksi yang berhasil ditambahkan
-        print(f"[OK] Wajah terdeteksi di: {filename}")
-        
+        print(f"Wajah berhasil dideteksi dan diproses: {filename}")
         return resized_face
-
+        
     except Exception as e:
-        # <-- Log untuk deteksi yang gagal
-        print(f"[GAGAL] Wajah tidak terdeteksi di: {filename}")
+        print(f"Gagal mendeteksi wajah di {filename}: {str(e)}")
         return None
