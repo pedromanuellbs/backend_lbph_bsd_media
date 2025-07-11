@@ -1,10 +1,12 @@
-Flask 
-gunicorn 
-mtcnn 
-gevent 
-tf-keras 
-scikit-learn 
-opencv-python 
-firebase-admin 
-google-api-python-client 
-requests 
+# requirements.txt FINAL
+Flask
+gunicorn
+mtcnn
+gevent
+deepface
+tf-keras
+scikit-learn
+opencv-python
+firebase-admin
+google-api-python-client
+requests
