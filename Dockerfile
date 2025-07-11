@@ -52,7 +52,7 @@ RUN pip install --no-cache-dir \
 
 # Tahap 4: Instal OpenCV (titik rawan kedua)
 # Tahap 4: Instal OpenCV Contrib
-RUN pip install --no-cache-dir opencv-contrib-python==4.5.1.48
+RUN pip install --no-cache-dir opencv-contrib-python
 # ATAU (jika yang di atas masih gagal)
 # RUN pip install --no-cache-dir opencv-contrib-python # Biarkan pip memilih versi terbaru
 
