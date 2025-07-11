@@ -1,6 +1,5 @@
 import os
 import json
-# import logging
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
@@ -9,28 +8,77 @@ from firebase_admin import firestore
 import cv2
 import numpy as np
 from facenet_pytorch import MTCNN
+import torch # Diperlukan untuk inisialisasi MTCNN device
+
+# Pastikan ini konsisten dengan config.py Anda
+# Jika Anda mengimpor dari config, hapus baris ini dan gunakan:
+# from config import MODEL_PATH, LABEL_MAP
+MODEL_PATH = "lbph_model.xml" # Atau .yml jika itu format Anda
+LABEL_MAP = "labels_map.txt"
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
-# Inisialisasi MTCNN untuk deteksi wajah
-mtcnn = MTCNN(keep_all=False, device='cpu')
+# --- Inisialisasi MTCNN yang konsisten ---
+# Ini harusnya sama dengan yang di face_preprocessing.py
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+mtcnn = MTCNN(image_size=96, margin=0, keep_all=False, post_process=True, device=device)
+# ------------------------------------------
 
-# --- PERUBAHAN DI SINI: HAPUS BLOK INISIALISASI FIREBASE ---
-# Blok 'if not firebase_admin._apps:' telah dihapus dari sini
-# karena inisialisasi akan ditangani sepenuhnya oleh app.py
-# -------------------------------------------------------------
-#testing123
+# --- GLOBAL: Muat model LBPH dan label map sekali ---
+# Ini akan dimuat saat gdrive_match.py pertama kali diimpor
+# atau saat fungsi yang menggunakannya pertama kali dipanggil.
+# Ini penting agar tidak memuat model 217MB berulang kali.
+_lbph_model = None
+_label_to_user_map = None # Peta dari label int ke user_id string
 
-# Di file: gdrive_match.py
+def _load_global_lbph_model():
+    global _lbph_model, _label_to_user_map
+    if _lbph_model is None:
+        print("INFO: Memuat model LBPH global untuk gdrive_match.py...")
+        _lbph_model = cv2.face.LBPHFaceRecognizer_create()
+        if not os.path.exists(MODEL_PATH) or not os.path.exists(LABEL_MAP):
+            print(f"ERROR: Model ({MODEL_PATH}) atau label map ({LABEL_MAP}) tidak ditemukan untuk gdrive_match.py.")
+            _lbph_model = None # Pastikan model tetap None jika file tidak ada
+            _label_to_user_map = {}
+            return None, {} # Mengembalikan tuple untuk konsistensi
+
+        try:
+            _lbph_model.read(MODEL_PATH)
+            print("INFO: Model LBPH global berhasil dimuat.")
+        except cv2.error as e:
+            print(f"CRITICAL ERROR: Gagal membaca model LBPH di gdrive_match.py: {e}")
+            _lbph_model = None
+            _label_to_user_map = {}
+            return None, {}
+
+        _label_to_user_map = {}
+        try:
+            with open(LABEL_MAP, "r") as f:
+                for line in f:
+                    parts = line.strip().split(":")
+                    if len(parts) == 2:
+                        lbl, uid = parts
+                        _label_to_user_map[int(lbl)] = uid
+            print("INFO: Label map global berhasil dimuat.")
+        except Exception as e:
+            print(f"CRITICAL ERROR: Gagal memuat label map di gdrive_match.py: {e}")
+            _lbph_model = None
+            _label_to_user_map = {}
+            return None, {}
+    return _lbph_model, _label_to_user_map
+
+# Panggil sekali saat modul diimpor (atau panggil di awal fungsi yang membutuhkannya)
+# _load_global_lbph_model() # Komentar ini karena akan dipanggil di is_face_match
+
 
 def get_all_gdrive_folder_ids():
-    print("\n--- Memulai get_all_gdrive_folder_ids ---") # Laporan Awal
+    print("\n--- Memulai get_all_gdrive_folder_ids ---")
     db = firestore.client()
     folder_ids = []
     
     try:
         sessions_stream = db.collection('photo_sessions').stream()
-        sessions = list(sessions_stream) # Ambil semua dokumen sekaligus
+        sessions = list(sessions_stream)
         print(f"  > Ditemukan {len(sessions)} dokumen di koleksi 'photo_sessions'.")
 
         for doc in sessions:
@@ -39,7 +87,6 @@ def get_all_gdrive_folder_ids():
             drive_link = data.get('driveLink', '')
             print(f"     - Link Drive ditemukan: {drive_link}")
 
-            # Cek apakah 'folders/' ada di dalam link
             if 'folders/' in drive_link:
                 print("     - Kondisi 'folders/ in drive_link' terpenuhi (True).")
                 folder_id = drive_link.split('folders/')[1].split('?')[0]
@@ -71,8 +118,6 @@ def list_photos(folder_id):
 def list_photo_links(folder_id):
     return list_photos(folder_id)
 
-# Di file: gdrive_match.py
-
 def download_drive_photo(file_id):
     service = get_drive_service()
     request = service.files().get_media(fileId=file_id)
@@ -86,95 +131,104 @@ def download_drive_photo(file_id):
     file_bytes = np.asarray(bytearray(fh.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
-    # --- TAMBAHAN SOLUSI DI SINI ---
-    # Jika gambar gagal di-decode (misal: file corrupt total)
     if img is None:
+        print(f"WARNING: Gagal decode gambar dari Drive untuk file ID: {file_id}")
         return None
     
-    # Konversi paksa gambar ke format standar 8-bit untuk menghindari error VDepth
-    # Ini akan "membersihkan" gambar sebelum diproses lebih lanjut.
     if img.dtype != np.uint8:
         img = cv2.convertScaleAbs(img)
-    # ---------------------------------
+        print(f"DEBUG: Gambar dari Drive dikonversi ke format 8-bit untuk file ID: {file_id}")
 
     return img
 
 def detect_and_crop_face(img):
+    # Ini harusnya menggunakan MTCNN yang diinisialisasi secara global di file ini
+    # dan konsisten dengan face_preprocessing.py
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     faces = mtcnn(rgb)
     if faces is None:
         return None
-    if isinstance(faces, list) or len(faces.shape) == 4:
-        face = faces[0]
+    
+    # MTCNN dapat mengembalikan tensor dengan dimensi batch (1, C, H, W) atau (C, H, W)
+    if isinstance(faces, list) or faces.dim() == 4:
+        face = faces[0] # Ambil wajah pertama jika ada banyak atau dalam list
     else:
         face = faces
-    face_np = face.permute(1,2,0).byte().numpy()
+    
+    # Konversi tensor PyTorch ke NumPy array (H, W, C)
+    # Pastikan tensor dipindahkan ke CPU sebelum konversi ke NumPy
+    face_np = face.permute(1,2,0).to('cpu').numpy()
+    # Konversi dari RGB (output MTCNN) ke BGR (untuk OpenCV)
     face_np = cv2.cvtColor(face_np, cv2.COLOR_RGB2BGR)
     return face_np
 
-# Di file: gdrive_match.py
-
-def is_face_match(face_img, target_img, threshold=70):
-    print("--- Memulai is_face_match (Logika Baru 1:1) ---")
-    # logging.basicConfig(level=logging.INFO)
-    # logging.info("Memulai fungsi is_face_match dengan logika baru 1:1")
+def is_face_match(user_face_img, target_img, threshold=70):
+    print("--- Memulai is_face_match (Logika Akurasi Baru) ---")
     
-    # Deteksi wajah dari FOTO KLIEN yang di-upload
-    face1 = detect_and_crop_face(face_img) # Wajah Klien
-    face2 = detect_and_crop_face(target_img) # Wajah Target dari Drive
+    # Pastikan model LBPH global sudah dimuat
+    lbph_model, label_to_user_map = _load_global_lbph_model()
+    if lbph_model is None or not label_to_user_map:
+        print("ERROR: Model LBPH global tidak dimuat atau label map kosong. Tidak dapat melakukan perbandingan.")
+        return False
 
-    if face1 is None:
-        print("  > Deteksi wajah klien (face1): Gagal")
-        print("--- Selesai is_face_match ---\n")
+    # Deteksi dan crop wajah dari FOTO KLIEN yang di-upload
+    face1_cropped = detect_and_crop_face(user_face_img) # Wajah Klien (sudah di-crop dan distandardisasi)
+    face2_cropped = detect_and_crop_face(target_img) # Wajah Target dari Drive (sudah di-crop dan distandardisasi)
+
+    if face1_cropped is None:
+        print("  > Deteksi wajah klien (face1): Gagal. Melewati perbandingan.")
         return False
-    if face2 is None:
-        print("  > Deteksi wajah target (face2): Gagal")
-        print("--- Selesai is_face_match ---\n")
+    if face2_cropped is None:
+        print("  > Deteksi wajah target (face2): Gagal. Melewati perbandingan.")
         return False
+    
     print("  > Deteksi wajah klien (face1): Berhasil")
     print("  > Deteksi wajah target (face2): Berhasil")
 
-    gray1 = cv2.cvtColor(face1, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(face2, cv2.COLOR_BGR2GRAY)
+    # Konversi ke Grayscale untuk LBPH
+    gray1 = cv2.cvtColor(face1_cropped, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(face2_cropped, cv2.COLOR_BGR2GRAY)
     
-    # --- LOGIKA BARU DIMULAI DI SINI ---
-    # 1. Buat model LBPH baru yang masih kosong
-    temp_model = cv2.face.LBPHFaceRecognizer_create()
+    # --- LOGIKA PERBANDINGAN AKURASI BARU ---
+    # 1. Prediksi wajah klien yang di-upload menggunakan model LBPH utama
+    # Ini akan memberikan confidence score seberapa mirip wajah klien dengan salah satu wajah di dataset
+    label1, conf1 = lbph_model.predict(gray1)
     
-    # 2. Latih model tersebut HANYA dengan satu gambar, yaitu wajah klien
-    # Kita beri label '1' sebagai penanda
-    temp_model.train([gray1], np.array([1]))
-    
-    # 3. Sekarang, gunakan model-sementara ini untuk memprediksi wajah target
-    # Hasil 'conf' akan menjadi jarak antara wajah klien dan wajah target
-    label, conf = temp_model.predict(gray2)
-    # --- LOGIKA BARU SELESAI ---
-    
-    print(f"  > Skor Kemiripan (Confidence): {conf:.2f}")
+    # 2. Prediksi wajah target dari Google Drive menggunakan model LBPH utama
+    label2, conf2 = lbph_model.predict(gray2)
+
+    print(f"  > Klien: Label {label1}, Conf {conf1:.2f} (User: {label_to_user_map.get(label1, 'UNKNOWN')})")
+    print(f"  > Target: Label {label2}, Conf {conf2:.2f} (User: {label_to_user_map.get(label2, 'UNKNOWN')})")
     print(f"  > Ambang Batas (Threshold): {threshold}")
-    
-    # is_match = conf >= threshold #dari pak stephen
-    is_match = conf < threshold
-    print(f"  > Hasil Perbandingan: {'COCOK' if is_match else 'TIDAK COCOK'}")
+
+    # Logika perbandingan:
+    # Asumsi: user_face_img adalah wajah dari user yang login (misal: 'akucapek@gmail.com')
+    # Kita ingin mencari foto di Drive yang juga dikenali sebagai 'akucapek@gmail.com'
+    # DAN memiliki confidence score yang rendah (mirip).
+
+    # Paling sederhana: Bandingkan apakah kedua wajah (klien dan target) dikenali sebagai label yang sama
+    # DAN confidence score-nya di bawah threshold.
+    # Confidence 0.00 menunjukkan kecocokan sempurna, jadi kita perlu nilai yang lebih tinggi.
+    # Threshold 70 adalah nilai yang umum untuk LBPH, tapi bisa disesuaikan.
+
+    is_match = False
+    if label1 != -1 and label2 != -1 and label1 == label2:
+        # Jika kedua wajah dikenali sebagai orang yang sama,
+        # dan confidence score (jarak) wajah target cukup rendah
+        # (artinya target mirip dengan kelas yang diprediksi)
+        if conf2 < threshold: # Conf2 adalah jarak wajah target ke kelas yang diprediksi
+            is_match = True
+            print(f"  > Hasil Perbandingan: COCOK (Label sama, Conf Target OK)")
+        else:
+            print(f"  > Hasil Perbandingan: TIDAK COCOK (Label sama, tapi Conf Target terlalu tinggi)")
+    else:
+        print(f"  > Hasil Perbandingan: TIDAK COCOK (Label berbeda atau tidak dikenali)")
+
     print("--- Selesai is_face_match ---\n")
     
     return is_match
-    # # Lakukan prediksi untuk mendapatkan confidence score
-    # label, conf = lbph_model.predict(gray2)
-    
-    # print(f"  > Skor Kemiripan (Confidence): {conf:.2f}") # Cetak skornya
-    # print(f"  > Ambang Batas (Threshold): {threshold}") # Cetak threshold
-    
-    # is_match = conf < threshold
-    # print(f"  > Hasil Perbandingan: {'COCOK' if is_match else 'TIDAK COCOK'}")
-    # print("--- Selesai is_face_match ---\n")
-    
-    # return is_match
-
-# Di file: gdrive_match.py
 
 def find_matching_photos(user_face_path, folder_id, threshold=70):
-    # Membaca gambar wajah user sekali saja di awal
     user_img = cv2.imread(user_face_path)
     if user_img is None:
         print(f"Error: Gagal membaca file wajah user di {user_face_path}")
@@ -188,16 +242,12 @@ def find_matching_photos(user_face_path, folder_id, threshold=70):
     for photo in photos_in_folder:
         try:
             print(f"  -> Memproses foto: {photo['name']} ({photo['id']})")
-            # 1. Download foto dari Google Drive
             target_img = download_drive_photo(photo['id'])
             if target_img is None:
                 continue
 
-            # 2. Lakukan perbandingan wajah
-            # Fungsi is_face_match dipanggil di sini!
             if is_face_match(user_img, target_img, threshold):
                 print(f"    [COCOK] Wajah ditemukan di foto {photo['name']}")
-                # 3. Jika cocok, baru tambahkan ke daftar hasil
                 matched_in_folder.append({
                     'name': photo['name'],
                     'webViewLink': photo['webViewLink'],
@@ -208,6 +258,8 @@ def find_matching_photos(user_face_path, folder_id, threshold=70):
 
         except Exception as e:
             print(f"    Error saat memproses foto {photo['name']}: {e}")
+            import traceback
+            traceback.print_exc()
             continue
             
     return matched_in_folder
