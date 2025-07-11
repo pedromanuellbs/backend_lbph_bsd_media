@@ -1,4 +1,4 @@
-# gdrive_match.py (Fixed)
+# gdrive_match.py (MODIFIKASI UNTUK LBPH COMPARISON)
 
 import os
 import json
@@ -7,7 +7,11 @@ from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseDownload
 import cv2
 import numpy as np
-from deepface import DeepFace
+# from deepface import DeepFace # HAPUS BARIS INI
+
+# Asumsi face_preprocessing sudah diimpor dan punya detect_and_crop
+# dari proyek Anda, pastikan ini tersedia di lingkungan worker
+from face_preprocessing import detect_and_crop
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
@@ -84,23 +88,88 @@ def download_drive_photo(service, file_id):
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     return img
 
-def compare_faces(face1_img, face2_img, threshold=0.593):
+# --- Tambahkan ini di gdrive_match.py ---
+# Ini harus sesuai dengan lokasi model dan label Anda
+MODEL_PATH = "lbph_model.xml"
+LABELS_MAP_PATH = "labels_map.txt"
+
+def load_lbph_model_and_labels():
     """
-    MODIFIED FUNCTION (Formerly is_face_match)
-    Compares two cropped face images (numpy arrays).
-    `enforce_detection` is False because faces are already detected.
+    Load model LBPH dan label_map (lbl→user_id) dari filesystem.
+    Ini adalah duplikasi dari app.py, pastikan model ter-training.
+    """
+    if not os.path.exists(MODEL_PATH) or not os.path.exists(LABELS_MAP_PATH):
+        print(f"ERROR: Model LBPH atau label map tidak ditemukan di {MODEL_PATH} atau {LABELS_MAP_PATH}")
+        return None, {}
+
+    model = cv2.face.LBPHFaceRecognizer_create()
+    model.read(MODEL_PATH)
+
+    label_map = {}
+    with open(LABELS_MAP_PATH, "r") as f:
+        for line in f:
+            lbl, uid = line.strip().split(":")
+            label_map[int(lbl)] = uid
+    return model, label_map
+
+# Global variable untuk menyimpan model yang sudah di-load (opsional, untuk efisiensi)
+_lbph_model = None
+_lbph_label_map = None
+
+def get_lbph_model():
+    """Lazily load LBPH model and label map."""
+    global _lbph_model, _lbph_label_map
+    if _lbph_model is None or _lbph_label_map is None:
+        _lbph_model, _lbph_label_map = load_lbph_model_and_labels()
+    return _lbph_model, _lbph_label_map
+
+def compare_faces(client_face_np_array, gdrive_face_np_array, confidence_threshold=70.0):
+    """
+    Fungsi yang dimodifikasi: Menggunakan LBPH untuk perbandingan wajah.
+    Input adalah NumPy array gambar wajah yang sudah di-crop dan grayscale.
     """
     try:
-        result = DeepFace.verify(
-            img1_path=face1_img, 
-            img2_path=face2_img,
-            model_name="SFace",
-            enforce_detection=False  # Important: set to False
-        )
-        distance = result['distance']
-        is_match = distance <= threshold
-        print(f"    - Comparison distance: {distance:.4f}. Match: {is_match}")
+        model, label_map = get_lbph_model()
+        if model is None:
+            print("    - [ERROR] Model LBPH tidak dimuat. Pastikan model sudah dilatih.")
+            return False
+
+        # Pastikan input adalah gambar grayscale dan bukan None
+        if client_face_np_array is None or gdrive_face_np_array is None:
+            print("    - [ERROR] Salah satu input wajah (NumPy array) adalah None.")
+            return False
+        
+        # Pastikan gambar dalam format yang benar (CV_8UC1 - grayscale)
+        # Jika detect_and_crop mengembalikan BGR, perlu dikonversi
+        if len(client_face_np_array.shape) == 3 and client_face_np_array.shape[2] == 3:
+            client_face_np_array = cv2.cvtColor(client_face_np_array, cv2.COLOR_BGR2GRAY)
+        if len(gdrive_face_np_array.shape) == 3 and gdrive_face_np_array.shape[2] == 3:
+            gdrive_face_np_array = cv2.cvtColor(gdrive_face_np_array, cv2.COLOR_BGR2GRAY)
+
+        # Prediksi wajah klien untuk mendapatkan labelnya
+        # Asumsi client_face_np_array sudah dari hasil detect_and_crop dan siap untuk predict
+        predicted_client_label, client_confidence = model.predict(client_face_np_array)
+        client_user_id_from_model = label_map.get(predicted_client_label)
+
+        # Prediksi wajah dari Google Drive
+        # Asumsi gdrive_face_np_array sudah dari hasil detect_and_crop dan siap untuk predict
+        predicted_gdrive_label, gdrive_confidence = model.predict(gdrive_face_np_array)
+        gdrive_user_id_from_model = label_map.get(predicted_gdrive_label)
+
+        print(f"    - Klien (predict): ID={client_user_id_from_model}, Confidence={client_confidence:.2f}")
+        print(f"    - GDrive (predict): ID={gdrive_user_id_from_model}, Confidence={gdrive_confidence:.2f}")
+
+        # Kondisi cocok:
+        # 1. User ID yang diprediksi dari wajah GDrive sama dengan user ID klien.
+        # 2. Tingkat kepercayaan (confidence) untuk wajah GDrive berada di bawah threshold (semakin kecil semakin percaya diri).
+        #    Kita juga bisa menambahkan cek confidence untuk wajah klien sendiri agar yakin model mengenalnya dengan baik.
+        is_match = (gdrive_user_id_from_model == client_user_id_from_model) and \
+                   (gdrive_confidence < confidence_threshold) 
+
+        print(f"    - Hasil perbandingan LBPH: {is_match} (Confidence GDrive: {gdrive_confidence:.2f} < Threshold: {confidence_threshold:.2f})")
         return is_match
+
     except Exception as e:
-        print(f"    - [ERROR] DeepFace comparison failed: {e}")
+        print(f"    - [ERROR] Perbandingan LBPH gagal: {e}")
+        # import traceback; traceback.print_exc() # Aktifkan untuk debugging lebih lanjut
         return False
