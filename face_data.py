@@ -5,7 +5,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 from face_preprocessing import detect_and_crop
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP
-
+# getest aja
 def build_dataset():
     """
     Membaca semua gambar pada FACES_DIR, crop/grayscale, mengembalikan X, y, dan label_map.
