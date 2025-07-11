@@ -1,16 +1,16 @@
 from flask import Flask, request, jsonify
 import os
 import cv2
+import logging
 
 from face_preprocessing import detect_and_crop
-from face_data import train_and_evaluate
+from face_data import train_and_evaluate, FACES_DIR, MODEL_PATH, LABELS_MAP_PATH
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-
-# konstanta
-FACES_DIR       = "faces"
-MODEL_PATH      = "lbph_model.xml"
-LABELS_MAP_PATH = "labels_map.txt"
 
 # pastikan folder dataset ada
 os.makedirs(FACES_DIR, exist_ok=True)
