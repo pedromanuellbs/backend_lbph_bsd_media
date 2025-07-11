@@ -1,18 +1,8 @@
 Flask==2.3.3
-# Ubah ke opencv-python saja, biasanya lebih umum dan minim konflik
-# Jika Anda benar-benar butuh fitur 'contrib', maka pertahankan opencv-contrib-python
-# tetapi ini sering menjadi sumber masalah.
-opencv-python==4.9.0.80 # Ganti ke versi standar, atau gunakan versi spesifik yang Anda tahu berfungsi di lokal
+opencv-python==4.9.0.80 # Tetap gunakan versi ini dulu. Jika ini masih gagal, kita akan coba versi yang lebih lama atau generic.
 
 numpy==1.26.4
 Pillow==10.2.0
-
-# Pastikan ini sesuai dengan instalasi Anda yang berhasil di lokal
-# dan pastikan Anda menggunakan versi PyTorch CPU
-torch==2.2.2+cpu # Jika ini yang sukses di lokal Anda
-torchvision==0.17.2+cpu # Jika ini yang sukses di lokal Anda
-
-facenet-pytorch==2.6.0
 scikit-learn==1.4.1
 
 firebase-admin==6.4.0
@@ -21,7 +11,13 @@ google-api-python-client==2.128.0
 gunicorn==22.0.0
 gevent==22.10.2
 
-# Hapus ini jika Anda tidak menggunakannya secara eksplisit:
-# mtcnn
-# deepface
-# tf-keras
+# --- Ini adalah BARIS KRITIS untuk PyTorch ---
+# Pastikan Python version di Railway sesuai (biasanya Python 3.9-3.11).
+# torch dan torchvision dengan --index-url untuk versi CPU.
+# Versi 2.2.2+cpu ini mungkin hanya tersedia untuk Python 3.10-3.11.
+# Jika Railway menggunakan Python 3.9, mungkin Anda butuh PyTorch versi lain (misal 1.13.1+cpu atau 2.0.1+cpu).
+# Coba versi ini dulu:
+torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu
+torchvision==0.17.2+cpu --index-url https://download.pytorch.org/whl/cpu
+
+facenet-pytorch==2.6.0 # Pastikan ini compatible dengan versi torch di atas.
