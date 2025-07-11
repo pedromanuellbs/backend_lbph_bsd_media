@@ -19,8 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender1 \
     git \
-    libopenblas-dev \ # <--- Pastikan ini ada DI SINI
-    liblapack-dev \   # <--- DAN INI ADA DI SINI
+    libopenblas-dev \
+    liblapack-dev \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
