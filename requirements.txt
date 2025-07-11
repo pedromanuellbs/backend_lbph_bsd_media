@@ -1,6 +1,6 @@
 Flask==2.2.5
 # UBAH INI:
-opencv-contrib-python==4.5.5.64 # Ganti dari opencv-python
+opencv-contrib-python # Ganti dari opencv-python
 # ATAU coba tanpa versi untuk mengambil yang terbaru:
 # opencv-contrib-python
 
