@@ -13,9 +13,5 @@ mtcnn
 gevent
 deepface
 tf-keras
-scikit-learn
-opencv-contrib-python
 firebase-admin
 google-api-python-client
-requests
-master
