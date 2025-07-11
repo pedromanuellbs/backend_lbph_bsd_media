@@ -5,8 +5,13 @@ import json
 import traceback
 import numpy as np
 import time # Diperlukan untuk timestamp
+#nice
 
 import cv2
+import logging
+
+from face_preprocessing import detect_and_crop
+from face_data import train_and_evaluate, FACES_DIR, MODEL_PATH, LABELS_MAP_PATH
 from flask import Flask, request, jsonify, send_from_directory
 
 from face_preprocessing import detect_and_crop
@@ -42,8 +47,12 @@ def upload_to_firebase(local_file, user_id, filename):
     
     return blob.public_url
 
-app = Flask(__name__)
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+app = Flask(__name__)
+=======
 # ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
 def handle_exceptions(e):

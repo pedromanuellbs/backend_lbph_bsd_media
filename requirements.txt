@@ -1,4 +1,13 @@
 Flask
+opencv-python
+opencv-contrib-python
+numpy
+facenet-pytorch
+torch
+torchvision
+scikit-learn
+Pillow
+requests
 gunicorn
 mtcnn
 gevent
@@ -9,3 +18,4 @@ opencv-contrib-python
 firebase-admin
 google-api-python-client
 requests
+master
