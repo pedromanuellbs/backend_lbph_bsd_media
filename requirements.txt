@@ -1,36 +1,27 @@
-# Flask
-# opencv-python
-# opencv-contrib-python
-# numpy
-# facenet-pytorch
-# torch
-# torchvision
-# scikit-learn
-# Pillow
-# requests
-# gunicorn
-# mtcnn
-# gevent
-# deepface
-# tf-keras
-# firebase-admin
-# google-api-python-client
-
 Flask==2.3.3
-opencv-contrib-python==4.9.0.80 # Gunakan ini, bukan opencv-python juga
+# Ubah ke opencv-python saja, biasanya lebih umum dan minim konflik
+# Jika Anda benar-benar butuh fitur 'contrib', maka pertahankan opencv-contrib-python
+# tetapi ini sering menjadi sumber masalah.
+opencv-python==4.9.0.80 # Ganti ke versi standar, atau gunakan versi spesifik yang Anda tahu berfungsi di lokal
+
 numpy==1.26.4
 Pillow==10.2.0
-# PyTorch (CPU Only) - Versi yang spesifik dan kompatibel dengan Python Anda
-# Periksa lagi versi torch dan torchvision Anda yang benar-benar stabil di lokal
-# berdasarkan instalasi terakhir yang sukses.
-torch==2.2.2+cpu
-torchvision==0.17.2+cpu
+
+# Pastikan ini sesuai dengan instalasi Anda yang berhasil di lokal
+# dan pastikan Anda menggunakan versi PyTorch CPU
+torch==2.2.2+cpu # Jika ini yang sukses di lokal Anda
+torchvision==0.17.2+cpu # Jika ini yang sukses di lokal Anda
+
 facenet-pytorch==2.6.0
 scikit-learn==1.4.1
+
 firebase-admin==6.4.0
 google-api-python-client==2.128.0
+
 gunicorn==22.0.0
 gevent==22.10.2
-# hapus mtcnn
-# hapus deepface
-# hapus tf-keras
+
+# Hapus ini jika Anda tidak menggunakannya secara eksplisit:
+# mtcnn
+# deepface
+# tf-keras
