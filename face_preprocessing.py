@@ -152,39 +152,29 @@ import numpy as np
 #         return None
 
 
-def detect_and_crop(img_path):
+def detect_and_crop(img_data):
     """
-    Mendeteksi wajah pada gambar, crop, resize ke 96x96, dan konversi ke grayscale.
+    Mendeteksi wajah dari DATA GAMBAR (bukan path), crop, resize, dan konversi.
     Mengembalikan gambar grayscale 96x96 jika berhasil, atau None jika gagal.
     """
-    filename = os.path.basename(img_path)
-    print(f"Memproses: {filename}")
-    
     try:
-        # Gunakan backend opencv untuk deteksi wajah
+        # PERUBAHAN: Gunakan img_path=img_data
         face_objs = DeepFace.extract_faces(
-            img_path=img_path,
+            img_path=img_data,
             detector_backend='opencv',
             enforce_detection=True,
             align=False
         )
         
-        # Ambil wajah pertama (asumsi hanya satu wajah)
         first_face = face_objs[0]
-        face_img = first_face['face']  # Ini adalah array numpy dengan nilai 0-1
+        face_img = first_face['face']
         
-        # Konversi ke uint8 (0-255)
         face_img_uint8 = (face_img * 255).astype(np.uint8)
-        
-        # Konversi ke grayscale
         gray_face = cv2.cvtColor(face_img_uint8, cv2.COLOR_RGB2GRAY)
-        
-        # Resize ke 96x96
         resized_face = cv2.resize(gray_face, (96, 96))
         
-        print(f"Wajah berhasil dideteksi dan diproses: {filename}")
         return resized_face
         
     except Exception as e:
-        print(f"Gagal mendeteksi wajah di {filename}: {str(e)}")
+        # Jika tidak ada wajah, DeepFace akan melempar exception
         return None

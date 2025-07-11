@@ -1,4 +1,4 @@
-# worker.py (VERSI SIMPLE UNTUK SKRIPSI + PROGRESS BAR)
+# worker.py
 
 import os
 import time
@@ -9,46 +9,37 @@ import requests
 import cv2
 import numpy as np
 
-# --- ASUMSI: Anda punya fungsi-fungsi ini dari project Anda ---
-# Fungsi ini harus mengambil daftar semua foto dari Google Drive Anda
-from gdrive_match import get_all_photos_from_gdrive 
-# Fungsi ini membandingkan 2 wajah dan mengembalikan True jika cocok
-from gdrive_match import compare_faces 
+# Pastikan nama fungsi ini sesuai dengan yang ada di file gdrive_match.py Anda
+from gdrive_match import get_all_photo_files, download_drive_photo, compare_faces, get_drive_service
 from face_preprocessing import detect_and_crop
 
-print("--- Worker (Versi Skripsi) Dimulai ---")
+print("--- Worker (Versi Skripsi Final) Dimulai ---")
 
-# --- Inisialisasi Firebase ---
 if not firebase_admin._apps:
     cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
     cred = credentials.Certificate(cred_info)
-    firebase_admin.initialize_app(cred, {
-        'storageBucket': 'db-ta-bsd-media.firebasestorage.app'
-    })
+    firebase_admin.initialize_app(cred)
 
 db = firestore.client()
 jobs_collection = db.collection('photo_search_jobs')
 
-def download_image(url, save_path):
-    """Helper untuk download gambar."""
-    response = requests.get(url, stream=True)
+def download_image_from_url(url):
+    """Helper untuk download gambar dari URL publik dan mengembalikannya sebagai data gambar."""
+    response = requests.get(url)
     response.raise_for_status()
-    with open(save_path, 'wb') as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
+    image_array = np.asarray(bytearray(response.content), dtype="uint8")
+    image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+    return image
 
-def process_job_with_progress():
-    """Mencari satu tugas, memprosesnya dengan laporan progres."""
-    
-    job_ref = None # Definisikan di luar try-block
-    
-    # Cari satu tugas yang statusnya 'pending'
+def process_single_job():
+    """Mencari satu tugas, memprosesnya dengan laporan progres, lalu berhenti."""
+    job_ref = None
     pending_jobs_query = jobs_collection.where('status', '==', 'pending').limit(1)
     
     try:
         docs = list(pending_jobs_query.stream())
         if not docs:
-            print("Tidak ada tugas baru.")
+            print("Tidak ada tugas baru. Worker berhenti.")
             return
 
         job_doc = docs[0]
@@ -56,76 +47,61 @@ def process_job_with_progress():
         job_data = job_doc.to_dict()
         job_ref = jobs_collection.document(job_id)
 
-        print(f"Mengambil tugas: {job_id}")
+        print(f"\n--- Mengambil tugas: {job_id} ---")
         
-        # 1. Download dan proses wajah klien (hanya sekali)
         client_image_url = job_data['clientImageURL']
-        tmp_client_path = f"/tmp/{job_id}_client.jpg"
-        download_image(client_image_url, tmp_client_path)
-        client_face = detect_and_crop(tmp_client_path)
+        client_image_data = download_image_from_url(client_image_url)
+        client_face = detect_and_crop(client_image_data)
         
         if client_face is None:
             raise ValueError("Wajah tidak terdeteksi pada gambar klien.")
 
-        # 2. Dapatkan daftar semua foto dari Google Drive
-        all_photos = get_all_photos_from_gdrive()
+        all_photos = get_all_photo_files()
         total_photos = len(all_photos)
         
-        # Update status dengan total foto
         job_ref.update({
-            'status': 'processing',
-            'progress': 0,
-            'total': total_photos
+            'status': 'processing', 'progress': 0, 'total': total_photos
         })
         
         matches = []
+        drive_service = get_drive_service()
         
-        # 3. Mulai loop pencarian satu per satu
         for i, photo_data in enumerate(all_photos):
             photo_id = photo_data['id']
-            photo_url = photo_data['url']
-            
-            print(f"  Memproses {i + 1}/{total_photos} : {photo_id}")
+            print(f"  Memproses {i + 1}/{total_photos} : {photo_data['name']}")
             
             try:
-                # Download foto dari drive
-                tmp_gdrive_path = f"/tmp/{photo_id}.jpg"
-                download_image(photo_url, tmp_gdrive_path)
+                gdrive_image_data = download_drive_photo(drive_service, photo_id)
+                if gdrive_image_data is None:
+                    continue
                 
-                # Deteksi wajah di foto dari drive
-                gdrive_face = detect_and_crop(tmp_gdrive_path)
+                gdrive_face = detect_and_crop(gdrive_image_data)
                 
                 if gdrive_face is not None:
-                    # Bandingkan wajah
-                    # Anda perlu `compare_faces` yang menggunakan model.predict
                     is_match = compare_faces(client_face, gdrive_face) 
                     if is_match:
                         print(f"    -> DITEMUKAN KECOCOKAN: {photo_id}")
-                        matches.append({"url": photo_url, "id": photo_id})
-                
-                os.remove(tmp_gdrive_path)
-
+                        public_url = f'https://drive.google.com/uc?export=view&id={photo_id}'
+                        matches.append({"url": public_url, "id": photo_id, "name": photo_data['name']})
+            
             except Exception as photo_error:
-                print(f"    -> Gagal memproses foto {photo_id}: {photo_error}")
+                print(f"    - Gagal memproses foto {photo_id}: {photo_error}")
                 continue
 
-            # 4. KIRIM UPDATE PROGRESS SETELAH SETIAP FOTO!
             job_ref.update({'progress': i + 1})
 
-        # 5. Selesai, update hasil akhir
-        print(f"Pencarian selesai untuk job {job_id}. Ditemukan {len(matches)} foto.")
+        print(f"--- Pencarian selesai. Ditemukan {len(matches)} foto. ---")
         job_ref.update({
             'status': 'completed',
             'results': matches,
             'completedAt': firestore.SERVER_TIMESTAMP
         })
-        os.remove(tmp_client_path)
 
     except Exception as e:
-        print(f"[ERROR] Terjadi kesalahan pada job: {e}")
+        print(f"[FATAL ERROR] Terjadi kesalahan: {e}")
         if job_ref:
             job_ref.update({'status': 'failed', 'error': str(e)})
 
-# --- Jalankan proses ---
+# --- Jalankan proses HANYA SEKALI ---
 if __name__ == "__main__":
-    process_job_with_progress()
+    process_single_job()
