@@ -1,8 +1,9 @@
-# requirements.txt (Versi Sederhana & Benar)
+# requirements.txt
 
 # Untuk web server
 Flask
 gunicorn
+gevent
 
 # Untuk pengenalan wajah
 deepface
