@@ -47,8 +47,8 @@ RUN pip install --no-cache-dir \
 # Tahap 3: Instal PyTorch dan Torchvision (dengan index-url yang krusial)
 # Ini adalah titik rawan utama. Jika gagal, errornya harus lebih spesifik untuk torch.
 RUN pip install --no-cache-dir \
-    torch==1.13.1+cpu --index-url https://download.pytorch.org/whl/cpu \
-    torchvision==0.14.1+cpu --index-url https://download.pytorch.org/whl/cpu
+    torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu \
+    torchvision==0.17.2+cpu --index-url https://download.pytorch.org/whl/cpu
 
 # Tahap 4: Instal OpenCV (titik rawan kedua)
 # Tahap 4: Instal OpenCV Contrib
@@ -59,6 +59,7 @@ RUN pip install --no-cache-dir opencv-contrib-python
 # --- PERUBAHAN DI SINI: Pisahkan dua paket ini ---
 # Tahap 5: Instal Scikit-learn
 RUN pip install --no-cache-dir \
+    facenet-pytorch==2.6.0 \
     scikit-learn==1.1.3
 
 # Tahap 6: Instal Facenet-PyTorch (Ini harusnya baik-baik saja jika scikit-learn berhasil)
