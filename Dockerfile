@@ -49,16 +49,18 @@ RUN pip install --no-cache-dir \
     torchvision==0.14.1+cpu --index-url https://download.pytorch.org/whl/cpu
 
 # Tahap 4: Instal OpenCV (titik rawan kedua)
-# Ini juga sering bermasalah dengan kompilasi.
 RUN pip install --no-cache-dir \
     opencv-python==4.5.5.64
 
-# Tahap 5: Instal Facenet-PyTorch dan Scikit-learn (bergantung pada yang di atas)
+# --- PERUBAHAN DI SINI: Pisahkan dua paket ini ---
+# Tahap 5: Instal Scikit-learn
 RUN pip install --no-cache-dir \
-    facenet-pytorch==2.5.2 \
     scikit-learn==1.4.1
 
-# --- END INSTALASI BERTahap ---
+# Tahap 6: Instal Facenet-PyTorch
+RUN pip install --no-cache-dir \
+    facenet-pytorch==2.5.2
+# --- END PERUBAHAN ---
 
 # Salin semua file kode aplikasi Anda ke dalam container
 COPY . .
