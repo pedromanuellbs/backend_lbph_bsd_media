@@ -172,15 +172,6 @@ def register_face():
         print(f"Error upload Firebase: {e}")
         return jsonify({'success': False, 'error': f'Gagal mengunggah ke Firebase: {e}'}), 500
 
-    # Latih ulang model dengan menambahkan data baru (opsional, bisa di-comment jika tidak ingin langsung train)
-    # try:
-    #     print("Memulai pelatihan model...")
-    #     metrics = train_and_evaluate()
-    #     print(f"Model dilatih ulang. Metrics: {metrics}")
-    # except Exception as e:
-    #     print(f"Error selama pelatihan model: {e}")
-        # Tidak mengembalikan error ke klien, karena registrasi sudah berhasil
-        # Tapi log error untuk debugging
 
     elapsed = time.time() - start_time
     print(f"Registrasi wajah selesai dalam {elapsed:.2f} detik")
