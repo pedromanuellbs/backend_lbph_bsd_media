@@ -2,4 +2,16 @@ Flask==2.3.3
 gunicorn==22.0.0
 numpy==1.26.4
 Pillow==10.2.0
-opencv-python==4.9.0.80 # Tambahkan baris ini. Kita gunakan versi standar dulu.
+opencv-python==4.9.0.80
+
+# --- Tambahkan baris-baris ini ---
+torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu
+torchvision==0.17.2+cpu --index-url https://download.pytorch.org/whl/cpu
+facenet-pytorch==2.6.0
+# ---------------------------------
+
+# Jika Anda menggunakan, tambahkan ini juga:
+scikit-learn==1.4.1
+firebase-admin==6.4.0
+google-api-python-client==2.128.0
+gevent==22.10.2
