@@ -1,14 +1,21 @@
-# requirements.txt
+# ===================================================
+# requirements.txt FINAL UNTUK PROYEK TA
+# ===================================================
 
-# Untuk web server
+# Untuk web server dan deployment
 Flask
 gunicorn
 gevent
 
-# Untuk pengenalan wajah
+# Untuk pengenalan wajah & machine learning
 deepface
 tf-keras
+scikit-learn
+opencv-python
 
-# Untuk Firebase dan Google Drive
+# Untuk koneksi ke layanan Google
 firebase-admin
 google-api-python-client
+
+# Untuk testing API (dari file test_api.py)
+requests
