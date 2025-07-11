@@ -30,7 +30,5 @@ COPY . .
 # =============================================================
 # === BARIS BARU: JALANKAN SCRIPT UNTUK DOWNLOAD MODEL ML ===
 # =============================================================
-RUN python prewarm_models.py
-
 # Perintah untuk menjalankan aplikasi saat container dimulai
 CMD ["gunicorn", "--worker-class", "gevent", "--timeout", "120", "-b", "0.0.0.0:8080", "app:app"]
