@@ -4,8 +4,14 @@ import cv2
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 from face_preprocessing import detect_and_crop
-from config import FACES_DIR, MODEL_PATH, LABEL_MAP
+
+# Konstanta path
+FACES_DIR = "faces"
+MODEL_PATH = "lbph_model.xml"
+LABELS_MAP_PATH = "labels_map.txt"
 # getest aja
+
+
 def build_dataset():
     """
     Membaca semua gambar pada FACES_DIR, crop/grayscale, mengembalikan X, y, dan label_map.
@@ -91,7 +97,7 @@ def train_and_evaluate():
     model.write(MODEL_PATH)
 
     # Simpan label_map
-    with open(LABEL_MAP, 'w') as f:
+    with open(LABELS_MAP_PATH, 'w') as f:
         for uid, lbl in label_map.items():
             f.write(f"{lbl}:{uid}\n")
 
