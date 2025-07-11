@@ -2,6 +2,7 @@ import os
 import json
 import traceback
 import numpy as np
+import requests
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
 import time # Import time untuk timestamp
@@ -66,25 +67,47 @@ def handle_exceptions(e):
 os.makedirs(FACES_DIR, exist_ok=True)
 
 
+# --- TEMPAT TERBAIK UNTUK FUNGSI DOWNLOAD_FILE_FROM_URL ---
+def download_file_from_url(url, destination):
+    try:
+        print(f"DEBUG: Mengunduh {url} ke {destination}")
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        with open(destination, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        print(f"DEBUG: Berhasil mengunduh {destination}")
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Gagal mengunduh file dari URL {url}: {e}")
+        return False
+    except Exception as e:
+        print(f"ERROR: Terjadi error saat menyimpan file {destination}: {e}")
+        return False
+# --- AKHIR TEMPAT TERBAIK ---
+
+
 # --- Fungsi untuk memastikan model ada saat startup atau registrasi pertama ---
 # Ini akan berjalan sekali saat aplikasi Flask pertama kali menerima request.
 @app.before_first_request
 def initial_model_check():
     print("INFO: Memeriksa keberadaan model LBPH saat startup...")
-    # Cek apakah model atau label map sudah ada
+
+    # URL model tidak lagi dibutuhkan di sini karena diunduh saat build Docker
+    MODEL_URL = "https://firebasestorage.googleapis.com/v0/b/db-ta-bsd-media.firebasestorage.app/o/face-recognition-models%2Flbph_model.xml?alt=media&token=26656ed8-3cd1-4220-a07d-aad9aaeb91f5"
+    LABEL_MAP_URL = "https://firebasestorage.googleapis.com/v0/b/db-ta-bsd-media.firebasestorage.app/o/face-recognition-models%2Flabels_map.txt?alt=media&token=2ab5957f-78b2-41b0-a1aa-b2f1b8675f54"
+
     if not os.path.exists(MODEL_PATH) or not os.path.exists(LABEL_MAP):
-        print("INFO: Model LBPH atau label map tidak ditemukan. Mencoba melatih model penuh.")
-        try:
-            # Panggil fungsi pelatihan penuh yang baru dari face_data.py
-            train_and_evaluate_full_dataset()
-            print("INFO: Pelatihan model awal selesai.")
-        except Exception as e:
-            print(f"ERROR: Gagal melakukan pelatihan model awal: {e}")
-            traceback.print_exc()
-            # Jika inisialisasi gagal, aplikasi mungkin tidak bisa berfungsi.
-            # Pertimbangkan untuk menghentikan aplikasi atau log error lebih serius.
+        print("INFO: Model LBPH atau label map tidak ditemukan secara lokal. Mencoba mengunduh.")
+        model_downloaded = download_file_from_url(MODEL_URL, MODEL_PATH)
+        labels_downloaded = download_file_from_url(LABEL_MAP_URL, LABEL_MAP)
+
+        if not model_downloaded or not labels_downloaded:
+            print("CRITICAL ERROR: Gagal mengunduh model atau label map. Aplikasi mungkin tidak berfungsi dengan baik.")
+        else:
+            print("INFO: Model LBPH dan label map berhasil diunduh.")
     else:
-        print("INFO: Model LBPH dan label map ditemukan saat startup.")
+        print("INFO: Model LBPH dan label map ditemukan secara lokal.")
 
 # ─── Helper Functions ──────────────────────────────────────────────────────
 def save_face_image(user_id: str, image_file) -> str:

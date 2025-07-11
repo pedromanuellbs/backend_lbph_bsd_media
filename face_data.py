@@ -10,10 +10,17 @@ from face_preprocessing import detect_and_crop # Pastikan ini diimpor
 def build_dataset():
     """
     Membaca semua gambar di FACES_DIR, melakukan crop/grayscale, dan mengembalikan X, y, label_map.
-    Ini digunakan untuk pelatihan penuh atau saat model belum ada.
+    Fungsi ini sekarang menyertakan log progres untuk setiap file yang diproses.
     """
     X, y, label_map = [], [], {}
     cur_label = 0
+
+    # --- PERUBAHAN 1: Hitung total file gambar terlebih dahulu untuk progress bar ---
+    print("Menghitung total gambar untuk diproses...")
+    total_images = sum([len([fn for fn in os.listdir(os.path.join(FACES_DIR, uid)) if fn.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]) for uid in os.listdir(FACES_DIR) if os.path.isdir(os.path.join(FACES_DIR, uid))])
+    print(f"Ditemukan total {total_images} gambar.")
+    processed_count = 0
+    # --------------------------------------------------------------------------
 
     # Memuat label_map yang sudah ada jika ada untuk menjaga konsistensi label
     if os.path.exists(LABEL_MAP):
@@ -28,7 +35,6 @@ def build_dataset():
         print(f"DEBUG: Initial label_map loaded: {label_map}")
         print(f"DEBUG: Starting cur_label for new users: {cur_label}")
 
-
     for uid in os.listdir(FACES_DIR):
         user_dir = os.path.join(FACES_DIR, uid)
         if not os.path.isdir(user_dir):
@@ -37,12 +43,12 @@ def build_dataset():
         if uid not in label_map:
             label_map[uid] = cur_label
             cur_label += 1
-            print(f"DEBUG: New user '{uid}' assigned label: {label_map[uid]}")
+            # Komentar DEBUG yang ini bisa di-nonaktifkan jika terlalu ramai
+            # print(f"DEBUG: New user '{uid}' assigned label: {label_map[uid]}")
         lbl = label_map[uid]
 
         for fn in os.listdir(user_dir):
             img_path = os.path.join(user_dir, fn)
-            # Lewati jika bukan file gambar (misalnya, .DS_Store)
             if not fn.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
                 continue
 
@@ -50,11 +56,18 @@ def build_dataset():
             if gray is None:
                 print(f"WARNING: Gagal mendeteksi/crop wajah di {img_path}. Melompati.")
                 continue
+
+            # --- PERUBAHAN 2: Tambahkan counter dan cetak log progres ---
+            processed_count += 1
+            print(f"[Proses {processed_count}/{total_images}] -> Memproses {uid}/{fn}")
+            # -------------------------------------------------------------
+            
             X.append(gray)
             y.append(lbl)
     
-    print(f"DEBUG: Dataset built with {len(X)} samples from {len(label_map)} users.")
-    return np.array(X, dtype=object), np.array(y), label_map
+    print(f"\nDEBUG: Dataset built with {len(X)} samples from {len(label_map)} users.")
+    return X, np.array(y), label_map
+
 
 def cross_validate_lbph(X, y, n_splits=10):
     """
@@ -151,7 +164,7 @@ def train_and_evaluate_full_dataset():
     print("Melatih model akhir dengan semua data...")
     model = cv2.face.LBPHFaceRecognizer_create()
     try:
-        model.train(list(X), y)
+        model.train(X, y)
         model.write(MODEL_PATH)
         print(f"Model disimpan ke: {MODEL_PATH}")
 

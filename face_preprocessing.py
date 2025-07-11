@@ -1,33 +1,44 @@
-from facenet_pytorch import MTCNN
+# face_preprocessing.py
+
+import os
 from PIL import Image
-import cv2
+from facenet_pytorch import MTCNN
+import torch
+import cv2 # <--- TAMBAHKAN BARIS INI
 
-# Initialize MTCNN for face detection
-mtcnn = MTCNN(image_size=96, margin=0)
+# Inisialisasi MTCNN sekali saja untuk efisiensi
+# Menggunakan 'cuda' jika tersedia, jika tidak 'cpu'
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+mtcnn = MTCNN(keep_all=False, post_process=False, device=device)
 
-def detect_and_crop(img_path):
+def detect_and_crop(image_path):
     """
-    Detect a single face from the image at img_path, crop & resize to 96×96,
-    convert to grayscale, and return as a NumPy array.
-    Returns None if no face is detected.
+    Mendeteksi wajah dari path gambar, meng-crop, dan mengonversinya ke grayscale.
+    Fungsi ini sekarang lebih tangguh terhadap file gambar yang rusak atau format aneh.
     """
-    # Open image and ensure RGB
-    img = Image.open(img_path).convert("RGB")
-    # Detect and crop face; returns a tensor of shape (3,96,96) or (1,3,96,96)
-    face = mtcnn(img)
-    if face is None:
+    try:
+        img = Image.open(image_path)
+        # Pastikan gambar dikonversi ke format RGB
+        img = img.convert('RGB')
+    except Exception as e:
+        print(f"ERROR: Gagal membuka atau mengonversi gambar {image_path}: {e}")
         return None
 
-    # Remove batch dimension if present: (1,C,H,W) -> (C,H,W)
-    if hasattr(face, 'dim') and face.dim() == 4:
-        face = face.squeeze(0)
+    try:
+        # Tangkap RuntimeError dari MTCNN
+        face = mtcnn(img)
+        if face is None:
+            return None # Tidak ada wajah yang terdeteksi
+    except RuntimeError as e:
+        print(f"ERROR: Gagal memproses gambar {image_path} dengan MTCNN: {e}")
+        return None
+    except Exception as e:
+        print(f"ERROR: Terjadi kesalahan tak terduga saat deteksi wajah di {image_path}: {e}")
+        return None
 
-    # If only 1 channel, expand to 3 channels
-    if face.size(0) == 1:
-        face = face.expand(3, -1, -1)
-
-    # Convert to H×W×C uint8 numpy
-    rgb = face.permute(1, 2, 0).mul(255).byte().cpu().numpy()
-    # Convert to grayscale
-    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-    return gray
+    # Mengubah tensor PyTorch ke format numpy array untuk OpenCV
+    face_np = face.permute(1, 2, 0).to('cpu').numpy()
+    # Konversi ke Grayscale untuk model LBPH
+    gray_face = cv2.cvtColor(face_np, cv2.COLOR_RGB2GRAY)
+    
+    return gray_face

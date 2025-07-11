@@ -70,5 +70,14 @@ RUN pip install --no-cache-dir \
 # Salin semua file kode aplikasi Anda ke dalam container
 COPY . .
 
+# =============================================================
+# === UNDUH MODEL ML SAAT BUILD DARI FIREBASE STORAGE ===
+# =============================================================
+# GANTI "URL_PUBLIK_LBPH_MODEL_ANDA" dan "URL_PUBLIK_LABELS_MAP_ANDA"
+# DENGAN URL ASLI DARI FIREBASE STORAGE ANDA
+RUN wget -O /app/lbph_model.xml "https://firebasestorage.googleapis.com/v0/b/db-ta-bsd-media.firebasestorage.app/o/face-recognition-models%2Flbph_model.xml?alt=media&token=26656ed8-3cd1-4220-a07d-aad9aaeb91f5" && \
+    wget -O /app/labels_map.txt "https://firebasestorage.googleapis.com/v0/b/db-ta-bsd-media.firebasestorage.app/o/face-recognition-models%2Flabels_map.txt?alt=media&token=2ab5957f-78b2-41b0-a1aa-b2f1b8675f54"
+# =============================================================
+
 # Perintah untuk menjalankan aplikasi saat container dimulai
 CMD ["gunicorn", "--worker-class", "gevent", "--timeout", "120", "-b", "0.0.0.0:8080", "app:app"]
