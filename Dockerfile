@@ -13,9 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-glx \
     libjpeg-dev \
     curl \
-    libcudnn8 \
-    cuda-cudart-11-2 \
-    cuda-libraries-11-2 \
  && rm -rf /var/lib/apt/lists/*
 
 # 3. Tetapkan direktori kerja di dalam container
