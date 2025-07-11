@@ -1,38 +1,36 @@
-# 1. Gunakan base image python yang ringan
+# Gunakan base image Python 3.10
 FROM python:3.10-slim
 
-# 2. Install system dependencies, ganti wget dengan curl
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Set direktori kerja di dalam container
+WORKDIR /app
+
+# Non-aktifkan buffer output Python
+ENV PYTHONUNBUFFERED 1
+
+# Update dan install pustaka sistem yang dibutuhkan
+RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
-    python3-dev \
+    libgl1-mesa-glx \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
     libxrender-dev \
-    libgl1-mesa-glx \
-    libjpeg-dev \
-    curl \
- && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
-# 3. Tetapkan direktori kerja di dalam container
-WORKDIR /app
-
-# 4. "Panggang" model SFace (menggunakan curl)
-RUN mkdir -p /root/.deepface/weights \
- && curl -sL -o /root/.deepface/weights/sface_weights.h5 https://github.com/serengil/deepface_models/releases/download/v1.0/sface_weights.h5
-
-# 5. Salin HANYA file requirements.txt terlebih dahulu untuk caching
+# Salin file requirements terlebih dahulu untuk caching
 COPY requirements.txt .
 
-# 6. Install semua Pustaka Python dari satu sumber
+# Install semua pustaka Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 7. Salin sisa kode aplikasi Anda
+# Salin semua file kode aplikasi Anda ke dalam container
 COPY . .
 
-# 8. Expose port yang digunakan aplikasi
-EXPOSE 8000
+# =============================================================
+# === BARIS BARU: JALANKAN SCRIPT UNTUK DOWNLOAD MODEL ML ===
+# =============================================================
+RUN python prewarm_models.py
 
-# 9. Perintah untuk menjalankan aplikasi saat container dimulai
-CMD ["python", "app.py"]
+# Perintah untuk menjalankan aplikasi saat container dimulai
+CMD ["gunicorn", "--worker-class", "gevent", "--timeout", "120", "-b", "0.0.0.0:8080", "app:app"]
