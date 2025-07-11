@@ -7,6 +7,7 @@ gevent
 
 # Untuk pengenalan wajah
 deepface
+tf-keras
 
 # Untuk Firebase dan Google Drive
 firebase-admin
