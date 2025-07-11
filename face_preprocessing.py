@@ -10,10 +10,10 @@ def detect_and_crop(img_data):
     Mengembalikan gambar grayscale 96x96 jika berhasil, atau None jika gagal.
     """
     try:
-        # PERUBAHAN: Gunakan img_path=img_data
+        # PAKAI MTCNN SAJA
         face_objs = DeepFace.extract_faces(
             img_path=img_data,
-            detector_backend='opencv',
+            detector_backend='mtcnn',
             enforce_detection=True,
             align=False
         )
@@ -28,5 +28,4 @@ def detect_and_crop(img_data):
         return resized_face
         
     except Exception as e:
-        # Jika tidak ada wajah, DeepFace akan melempar exception
         return None

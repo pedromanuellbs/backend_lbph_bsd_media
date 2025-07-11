@@ -1,6 +1,7 @@
 # requirements.txt FINAL
 Flask
 gunicorn
+mtcnn
 gevent
 deepface
 tf-keras
