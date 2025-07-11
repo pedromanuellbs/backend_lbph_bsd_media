@@ -161,6 +161,11 @@ def register_face():
     if raw_path is None: # Cek jika save_face_image gagal
         return jsonify({'success': False, 'error': 'Gagal menyimpan gambar yang diunggah'}), 500
 
+    try:
+        debug_firebase_url = upload_to_firebase(raw_path, user_id, f"debug_raw_{os.path.basename(raw_path)}")
+        print(f"DEBUG: Gambar mentah diupload ke Firebase untuk debug: {debug_firebase_url}")
+    except Exception as e:
+        print(f"ERROR: Gagal mengupload gambar mentah ke Firebase: {e}")
     # --- Upload ke Firebase Storage (sebelum model update) ---
     try:
         firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
