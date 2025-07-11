@@ -17,10 +17,6 @@ from uuid import uuid4 # Untuk membuat ID tugas yang unik
 import firebase_admin
 from firebase_admin import credentials, storage, firestore # <--- TAMBAHKAN firestore di sini
 
-from gdrive_match import find_matching_photos
-
-from gdrive_match import find_all_matching_photos, get_all_gdrive_folder_ids
-
 if not firebase_admin._apps:
     import os, json
     cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
