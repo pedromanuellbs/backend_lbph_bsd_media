@@ -1,20 +1,36 @@
 import os
 import numpy as np
 import cv2
+import torch
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 from face_preprocessing import detect_and_crop
+from config import FACES_DIR, MODEL_PATH, LABEL_MAP
 
-# Konstanta path
-FACES_DIR = "faces"
-MODEL_PATH = "lbph_model.xml"
-LABELS_MAP_PATH = "labels_map.txt"
-# getest aja
+# Dataset Structure:
+# faces/
+#   <user_id>/
+#     img_front.jpg      # menghadap depan
+#     img_left.jpg       # menoleh kiri
+#     img_right.jpg      # menoleh kanan
+#     img_up.jpg         # menghadap atas
+#     img_down.jpg       # menghadap bawah
+#
+# Setiap folder user_id berisi variasi posisi wajah (.jpg).
+# Struktur ini memudahkan pelatihan (train) dan pengujian (test) model face recognition.
+
+import numpy as np
+import cv2
+import torch
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import accuracy_score, precision_score, recall_score
+from face_preprocessing import detect_and_crop
+from config import FACES_DIR, MODEL_PATH, LABEL_MAP
 
 
 def build_dataset():
     """
-    Membaca semua gambar pada FACES_DIR, crop/grayscale, mengembalikan X, y, dan label_map.
+    Baca semua gambar di FACES_DIR, crop/grayscale, kembalikan X, y, label_map.
     """
     X, y, label_map = [], [], {}
     cur_label = 0
@@ -39,27 +55,24 @@ def build_dataset():
 
     return np.array(X), np.array(y), label_map
 
+
 def cross_validate_lbph(X, y, n_splits=10):
     """
-    Melakukan stratified K-Fold cross validation, mengembalikan metrik rata-rata.
+    Lakukan stratified K-Fold CV, kembalikan metrik rata-rata.
     Jika sampel kurang dari n_splits, gunakan n_splits = len(X).
     """
     n_samples = len(X)
     if n_samples < 2:
+        # Tidak cukup data untuk CV
         return {'accuracy': None, 'precision': None, 'recall': None}
 
+    # Atur n_splits sesuai jumlah sampel
     splits = min(n_splits, n_samples)
     skf = StratifiedKFold(n_splits=splits, shuffle=True, random_state=42)
     accs, precs, recs = [], [], []
 
     for train_idx, val_idx in skf.split(X, y):
-        model = cv2.face.LBPHFaceRecognizer_create(
-            radius=2,
-            neighbors=16,
-            grid_x=8,
-            grid_y=8,
-            threshold=100
-        )
+        model = cv2.face.LBPHFaceRecognizer_create()
         model.train([X[i] for i in train_idx], y[train_idx])
         preds = [model.predict(X[i])[0] for i in val_idx]
         accs.append(accuracy_score(y[val_idx], preds))
@@ -72,10 +85,11 @@ def cross_validate_lbph(X, y, n_splits=10):
         'recall': float(np.mean(recs))
     }
 
+
 def train_and_evaluate():
     """
-    Bangun dataset, lakukan cross-validation jika memungkinkan, latih model final, simpan model dan label_map.
-    Mengembalikan metrik cross-validation (None jika tidak ada).
+    Bangun dataset, cross-validate jika memungkinkan, latih model final, simpan model dan label_map.
+    Kembalikan metrik CV (None jika tidak ada).
     """
     X, y, label_map = build_dataset()
     n_samples = len(X)
@@ -85,19 +99,13 @@ def train_and_evaluate():
     # Cross-validation
     metrics = cross_validate_lbph(X, y)
 
-    # Latih model akhir dengan semua data, konfigurasi optimal LBPH
-    model = cv2.face.LBPHFaceRecognizer_create(
-        radius=2,
-        neighbors=16,
-        grid_x=8,
-        grid_y=8,
-        threshold=100
-    )
+    # Latih model akhir dengan semua data
+    model = cv2.face.LBPHFaceRecognizer_create()
     model.train(list(X), y)
     model.write(MODEL_PATH)
 
     # Simpan label_map
-    with open(LABELS_MAP_PATH, 'w') as f:
+    with open(LABEL_MAP, 'w') as f:
         for uid, lbl in label_map.items():
             f.write(f"{lbl}:{uid}\n")
 
