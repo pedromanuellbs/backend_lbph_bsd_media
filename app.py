@@ -177,12 +177,12 @@ def register_face():
         return jsonify({'success': False, 'error': f'Gagal mengunggah ke Firebase: {e}'}), 500
 
     # Latih ulang model dengan menambahkan data baru (opsional, bisa di-comment jika tidak ingin langsung train)
-    try:
-        print("Memulai pelatihan model...")
-        metrics = train_and_evaluate()
-        print(f"Model dilatih ulang. Metrics: {metrics}")
-    except Exception as e:
-        print(f"Error selama pelatihan model: {e}")
+    # try:
+    #     print("Memulai pelatihan model...")
+    #     metrics = train_and_evaluate()
+    #     print(f"Model dilatih ulang. Metrics: {metrics}")
+    # except Exception as e:
+    #     print(f"Error selama pelatihan model: {e}")
         # Tidak mengembalikan error ke klien, karena registrasi sudah berhasil
         # Tapi log error untuk debugging
 
@@ -216,6 +216,30 @@ def save_face_image(user_id: str, image_file) -> str:
     
     return dst
 
+
+@app.route('/retrain_model', methods=['POST'])
+def retrain_model():
+    # (Opsional tapi direkomendasikan) Tambahkan secret key untuk keamanan
+    secret_key = request.headers.get('X-Secret-Key')
+    if secret_key != "KATA_RAHASIA_ANDA": # Ganti dengan secret key yang aman
+        return jsonify({'success': False, 'error': 'Akses ditolak'}), 403
+
+    try:
+        print("Memulai pelatihan model secara manual...")
+        start_time = time.time()
+        metrics = train_and_evaluate()
+        elapsed = time.time() - start_time
+        print(f"Model berhasil dilatih ulang dalam {elapsed:.2f} detik. Metrics: {metrics}")
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Model berhasil dilatih ulang.',
+            'metrics': metrics,
+            'training_time': elapsed
+        })
+    except Exception as e:
+        print(f"Error selama pelatihan manual: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/verify_face', methods=['POST'])
 def verify_face():
