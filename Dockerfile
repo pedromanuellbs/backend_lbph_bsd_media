@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender1 \
     git \
+    libopenblas-dev \ # <--- TAMBAHKAN INI
+    liblapack-dev \   # <--- TAMBAHKAN INI
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -55,9 +57,9 @@ RUN pip install --no-cache-dir \
 # --- PERUBAHAN DI SINI: Pisahkan dua paket ini ---
 # Tahap 5: Instal Scikit-learn
 RUN pip install --no-cache-dir \
-    scikit-learn==1.4.1
+    scikit-learn==1.1.3 # <--- UBAH VERSI INI
 
-# Tahap 6: Instal Facenet-PyTorch
+# Tahap 6: Instal Facenet-PyTorch (Ini harusnya baik-baik saja jika scikit-learn berhasil)
 RUN pip install --no-cache-dir \
     facenet-pytorch==2.5.2
 # --- END PERUBAHAN ---
