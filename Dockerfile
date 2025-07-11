@@ -22,15 +22,46 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Salin file requirements.txt terlebih dahulu untuk memanfaatkan Docker layer caching
+# Salin requirements.txt ke dalam container
 COPY requirements.txt .
 
-# Install semua pustaka Python dari requirements.txt
-# --no-cache-dir untuk menghindari caching pip di dalam container (mengurangi ukuran image)
-RUN pip install --no-cache-dir -r requirements.txt
+# --- START INSTALASI BERTahap ---
+
+# Tahap 1: Instal dependensi dasar terlebih dahulu
+# Ini adalah paket yang jarang bermasalah dan dibutuhkan oleh banyak lainnya.
+RUN pip install --no-cache-dir \
+    Flask==2.2.5 \
+    gunicorn==22.0.0 \
+    gevent==22.10.2 \
+    requests==2.31.0 \
+    firebase-admin==6.4.0 \
+    google-api-python-client==2.128.0
+
+# Tahap 2: Instal NumPy dan Pillow (seringkali pra-syarat untuk ML/CV)
+RUN pip install --no-cache-dir \
+    numpy==1.26.4 \
+    Pillow==10.2.0
+
+# Tahap 3: Instal PyTorch dan Torchvision (dengan index-url yang krusial)
+# Ini adalah titik rawan utama. Jika gagal, errornya harus lebih spesifik untuk torch.
+RUN pip install --no-cache-dir \
+    torch==1.13.1+cpu --index-url https://download.pytorch.org/whl/cpu \
+    torchvision==0.14.1+cpu --index-url https://download.pytorch.org/whl/cpu
+
+# Tahap 4: Instal OpenCV (titik rawan kedua)
+# Ini juga sering bermasalah dengan kompilasi.
+RUN pip install --no-cache-dir \
+    opencv-python==4.5.5.64
+
+# Tahap 5: Instal Facenet-PyTorch dan Scikit-learn (bergantung pada yang di atas)
+RUN pip install --no-cache-dir \
+    facenet-pytorch==2.5.2 \
+    scikit-learn==1.4.1
+
+# --- END INSTALASI BERTahap ---
 
 # Salin semua file kode aplikasi Anda ke dalam container
 COPY . .
 
-# Perintah yang akan dijalankan saat container dimulai
+# Perintah untuk menjalankan aplikasi saat container dimulai
 CMD ["gunicorn", "--worker-class", "gevent", "--timeout", "120", "-b", "0.0.0.0:8080", "app:app"]
