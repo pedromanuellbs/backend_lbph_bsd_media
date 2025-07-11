@@ -1,23 +1,2 @@
 Flask==2.3.3
-opencv-python==4.9.0.80 # Tetap gunakan versi ini dulu. Jika ini masih gagal, kita akan coba versi yang lebih lama atau generic.
-
-numpy==1.26.4
-Pillow==10.2.0
-scikit-learn==1.4.1
-
-firebase-admin==6.4.0
-google-api-python-client==2.128.0
-
 gunicorn==22.0.0
-gevent==22.10.2
-
-# --- Ini adalah BARIS KRITIS untuk PyTorch ---
-# Pastikan Python version di Railway sesuai (biasanya Python 3.9-3.11).
-# torch dan torchvision dengan --index-url untuk versi CPU.
-# Versi 2.2.2+cpu ini mungkin hanya tersedia untuk Python 3.10-3.11.
-# Jika Railway menggunakan Python 3.9, mungkin Anda butuh PyTorch versi lain (misal 1.13.1+cpu atau 2.0.1+cpu).
-# Coba versi ini dulu:
-torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu
-torchvision==0.17.2+cpu --index-url https://download.pytorch.org/whl/cpu
-
-facenet-pytorch==2.6.0 # Pastikan ini compatible dengan versi torch di atas.
