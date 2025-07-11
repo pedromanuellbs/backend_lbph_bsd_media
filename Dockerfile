@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libcudnn8 \
     cuda-cudart-11-2 \
-    cuda-libraries-11-2
+    cuda-libraries-11-2 \ # <-- TAMBAHKAN TANDA \ DI SINI
  && rm -rf /var/lib/apt/lists/*
 
 # 3. Tetapkan direktori kerja di dalam container
