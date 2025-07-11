@@ -1,10 +1,10 @@
-Flask
-opencv-python
+Flask==2.2.5
+opencv-python # Biarkan tanpa versi dulu, atau coba spesifik 4.9.0.80 jika ini menimbulkan masalah
 numpy
 Pillow
-facenet-pytorch
-torch
-torchvision
+facenet-pytorch==2.6.0 # Spesifikkan versi ini
+torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu # PENTING!
+torchvision==0.17.2+cpu --index-url https://download.pytorch.org/whl/cpu # PENTING!
 scikit-learn
 requests
 gunicorn
