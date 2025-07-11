@@ -4,18 +4,18 @@ import cv2
 import torch # Diperlukan karena facenet_pytorch adalah dependency utama
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score
-from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan config.py ada dan berisi variabel ini
+from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke file config Anda
 from face_preprocessing import detect_and_crop # Pastikan ini diimpor
 
 def build_dataset():
     """
-    Baca semua gambar di FACES_DIR, crop/grayscale, kembalikan X, y, label_map.
+    Membaca semua gambar di FACES_DIR, melakukan crop/grayscale, dan mengembalikan X, y, label_map.
     Ini digunakan untuk pelatihan penuh atau saat model belum ada.
     """
     X, y, label_map = [], [], {}
     cur_label = 0
 
-    # Load existing label_map if it exists to maintain label consistency
+    # Memuat label_map yang sudah ada jika ada untuk menjaga konsistensi label
     if os.path.exists(LABEL_MAP):
         with open(LABEL_MAP, 'r') as f:
             for line in f:
@@ -23,7 +23,7 @@ def build_dataset():
                 if len(parts) == 2:
                     lbl_str, uid = parts
                     label_map[uid] = int(lbl_str)
-            if label_map:
+            if label_map: # Mencari nomor label berikutnya yang tersedia
                 cur_label = max(label_map.values()) + 1
         print(f"DEBUG: Initial label_map loaded: {label_map}")
         print(f"DEBUG: Starting cur_label for new users: {cur_label}")
@@ -42,7 +42,7 @@ def build_dataset():
 
         for fn in os.listdir(user_dir):
             img_path = os.path.join(user_dir, fn)
-            # Skip if not an image file (e.g., .DS_Store)
+            # Lewati jika bukan file gambar (misalnya, .DS_Store)
             if not fn.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
                 continue
 
@@ -56,10 +56,9 @@ def build_dataset():
     print(f"DEBUG: Dataset built with {len(X)} samples from {len(label_map)} users.")
     return np.array(X, dtype=object), np.array(y), label_map
 
-
 def cross_validate_lbph(X, y, n_splits=10):
     """
-    Lakukan stratified K-Fold CV, kembalikan metrik rata-rata.
+    Melakukan stratified K-Fold CV, mengembalikan metrik rata-rata.
     """
     n_samples = len(X)
     if n_samples < 2:
@@ -135,8 +134,8 @@ def cross_validate_lbph(X, y, n_splits=10):
 
 def train_and_evaluate_full_dataset():
     """
-    Bangun dataset dari awal, cross-validate jika memungkinkan, latih model final, simpan model dan label_map.
-    Kembalikan metrik CV (None jika tidak ada).
+    Membangun dataset dari awal, melakukan cross-validation jika memungkinkan, melatih model final, menyimpan model dan label_map.
+    Mengembalikan metrik CV (None jika tidak ada).
     Fungsi ini untuk rebuild model secara total.
     """
     print("Membangun dataset dari awal untuk pelatihan penuh...")
@@ -169,26 +168,30 @@ def train_and_evaluate_full_dataset():
 
 def load_model_and_labels():
     """
-    Load model LBPH dan label_map (lbl→user_id) dari filesystem.
+    Memuat model LBPH dan label_map (lbl→user_id) dari filesystem.
     Mengembalikan tuple (model, label_map).
-    Jika belum ada model atau error, kembalikan (None, {}).
+    Jika belum ada model atau error, mengembalikan (None, {}).
     """
+    print("DEBUG: load_model_and_labels START")
     model = cv2.face.LBPHFaceRecognizer_create()
-    if not os.path.exists(MODEL_PATH) or not os.path.exists(LABEL_MAP):
-        print("DEBUG: Model atau label_map tidak ditemukan.")
+    if not os.path.exists(MODEL_PATH):
+        print(f"ERROR: load_model_and_labels: MODEL_PATH {MODEL_PATH} TIDAK DITEMUKAN.")
+        return None, {}
+    if not os.path.exists(LABEL_MAP):
+        print(f"ERROR: load_model_and_labels: LABEL_MAP {LABEL_MAP} TIDAK DITEMUKAN.")
         return None, {}
 
     try:
         model.read(MODEL_PATH)
-        print(f"DEBUG: Model berhasil dimuat dari: {MODEL_PATH}")
+        print("DEBUG: load_model_and_labels: Model berhasil dibaca.")
     except cv2.error as e:
-        print(f"ERROR: Gagal memuat model LBPH dari '{MODEL_PATH}': {e}. Model mungkin corrupt atau tidak ada. Mengembalikan None.")
+        print(f"CRITICAL ERROR: load_model_and_labels: Error membaca model LBPH: {e}. Model mungkin corrupt atau tidak ada. Mengembalikan None.")
         if os.path.exists(MODEL_PATH):
             os.remove(MODEL_PATH)
             print(f"INFO: Menghapus file model yang corrupt: {MODEL_PATH}")
         return None, {}
     except Exception as e:
-        print(f"ERROR: Terjadi error tidak terduga saat memuat model: {e}. Mengembalikan None.")
+        print(f"CRITICAL ERROR: load_model_and_labels: Error tak terduga memuat model: {e}. Mengembalikan None.")
         return None, {}
 
     label_map_loaded = {}
@@ -199,15 +202,16 @@ def load_model_and_labels():
                 if len(parts) == 2:
                     lbl, uid = parts
                     label_map_loaded[int(lbl)] = uid
-        print(f"DEBUG: Label map berhasil dimuat dari: {LABEL_MAP}")
+        print("DEBUG: load_model_and_labels: Label map berhasil dimuat.")
     except Exception as e:
-        print(f"ERROR: Gagal memuat label map dari '{LABEL_MAP}': {e}. Mengembalikan None.")
+        print(f"CRITICAL ERROR: load_model_and_labels: Gagal memuat label map dari '{LABEL_MAP}': {e}. Mengembalikan None.")
         if os.path.exists(LABEL_MAP):
             os.remove(LABEL_MAP)
             print(f"INFO: Menghapus file label map yang corrupt: {LABEL_MAP}")
         return None, {}
 
     reverse_label_map = {v: k for k, v in label_map_loaded.items()}
+    print("DEBUG: load_model_and_labels END: BERHASIL.")
     return model, reverse_label_map
 
 
@@ -268,14 +272,19 @@ def update_lbph_model_incrementally(new_face_image_path, user_id):
         traceback.print_exc()
         return False
 
-# --- Ini adalah bagian yang hanya untuk pengujian lokal train_model.py ---
-# if __name__ == "__main__":
-#     # Ini akan menjalankan fungsi train_and_evaluate() yang lama,
-#     # yang tidak berisi logika incremental training.
-#     # Ini HANYA untuk local testing dari train_model.py
-#     #all_metrics = train_and_evaluate()
-#     #print("\n================ HASIL AKHIR ================")
-#     #print(f"Metrik dari Cross-Validation: {all_metrics['cross_validation_metrics']}")
-#     #print(f"Metrik dari Train-Test Split: {all_metrics['train_test_split_metrics']}")
-#     #print("===========================================")
-#     pass # Kosongkan atau hapus jika tidak ingin menjalankannya secara lokal
+# Untuk menjalankan file ini secara langsung (hanya untuk pengujian lokal)
+if __name__ == "__main__":
+    # Ini akan menjalankan fungsi train_and_evaluate_full_dataset()
+    # yang akan melatih model dari semua data di FACES_DIR.
+    # Pastikan FACES_DIR, MODEL_PATH, LABEL_MAP di config.py sudah benar.
+    try:
+        all_metrics = train_and_evaluate_full_dataset()
+        print("\n================ HASIL AKHIR ================")
+        print(f"Metrik dari Cross-Validation: {all_metrics['cross_validation_metrics']}")
+        # train_and_evaluate_full_dataset tidak mengembalikan split_metrics, jadi ini mungkin None
+        # print(f"Metrik dari Train-Test Split: {all_metrics['train_test_split_metrics']}")
+        print("===========================================")
+    except Exception as e:
+        print(f"ERROR saat menjalankan train_model.py secara langsung: {e}")
+        import traceback
+        traceback.print_exc()
