@@ -1,42 +1,42 @@
+# app.py (Final Dispatch Job)
+
 import os
 import json
 import traceback
 import numpy as np
-import time
+import time # Diperlukan untuk timestamp
 
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
 
 from face_preprocessing import detect_and_crop
-from face_data import train_and_evaluate
-
-from config import FACES_DIR, MODEL_PATH, LABEL_MAP
-from uuid import uuid4 # Untuk membuat ID tugas yang unik
+from face_data import train_and_evaluate # Untuk melatih model LBPH
 
 # --- Import dan setup Firebase Admin SDK ---
 import firebase_admin
-from firebase_admin import credentials, storage, firestore # <--- TAMBAHKAN firestore di sini
+from firebase_admin import credentials, storage, firestore # Tambahkan firestore di sini
+from uuid import uuid4 # Untuk membuat ID tugas yang unik
 
 if not firebase_admin._apps:
-    import os, json
     cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
     cred = credentials.Certificate(cred_info)
     firebase_admin.initialize_app(cred, {
         'storageBucket': 'db-ta-bsd-media.firebasestorage.app'
     })
 
-
-
+db = firestore.client() # Inisialisasi Firestore client
 
 # Fungsi helper untuk upload file ke Firebase Storage
 def upload_to_firebase(local_file, user_id, filename):
-    bucket = storage.bucket('db-ta-bsd-media.firebasestorage.app')
+    """Upload file ke Firebase Storage dan return URL download-nya"""
+    bucket = storage.bucket()
     blob = bucket.blob(f"face-dataset/{user_id}/{filename}")
     
     # Upload dengan kualitas JPEG 90%
+    # Pastikan local_file adalah path ke gambar yang sudah di-crop dan bersih
     blob.upload_from_filename(
         local_file,
-        content_type='image/jpeg',
+        content_type='image/jpeg', # Atau 'image/png' tergantung format
         predefined_acl='publicRead'
     )
     
@@ -70,11 +70,11 @@ def save_face_image(user_id: str, image_file) -> str:
     """
     user_dir = os.path.join(FACES_DIR, user_id)
     os.makedirs(user_dir, exist_ok=True)  # Otomatis bikin folder user baru
-    count = len([f for f in os.listdir(user_dir) if f.lower().endswith('.jpg')])
-    dst = os.path.join(user_dir, f"{count+1}.jpg")
+    count = len([f for f in os.listdir(user_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]) # Menghitung semua ekstensi gambar
+    dst = os.path.join(user_dir, f"{count+1}.jpg") # Selalu simpan sebagai JPG
     image_file.save(dst)
     return dst
-#anjay
+
 def load_model_and_labels():
     """
     Load model LBPH dan label_map (lbl→user_id) dari filesystem.
@@ -102,219 +102,140 @@ def home():
 @app.route('/register_face', methods=['POST'])
 def register_face():
     print("===== MULAI register_face =====")
-    start_time = time.time()
-    
-    # Validasi input
     user_id = request.form.get('user_id')
-    image = request.files.get('image')
-    
+    image   = request.files.get('image')
+
     if not user_id or not image:
-        return jsonify({'success': False, 'error': 'user_id atau file gambar tidak valid/kosong'}), 400
+        return jsonify({'success': False, 'error': 'user_id atau image tidak ada di request'}), 400
+
+    # Simpan gambar mentah yang diupload
+    raw_path = save_face_image(user_id, image)
     
-    # Validasi ekstensi file
-    allowed_extensions = ['.jpg', '.jpeg', '.png']
-    if not any(image.filename.lower().endswith(ext) for ext in allowed_extensions):
-        return jsonify({'success': False, 'error': 'Format gambar tidak didukung. Gunakan JPG, JPEG, atau PNG'}), 400
+    # Baca gambar mentah untuk diproses
+    img_raw = cv2.imread(raw_path)
+    if img_raw is None:
+        print(f"Gagal memuat gambar dari {raw_path}")
+        return jsonify({'success': False, 'error': 'Gagal memuat gambar yang diupload.'}), 400
+
+    # Deteksi dan crop wajah. Ini akan mengembalikan NumPy array grayscale.
+    cropped_face_np = detect_and_crop(img_raw)
     
-    # Validasi ukuran file (maksimal 5 MB)
-    try:
-        # Simpan sementara untuk cek ukuran
-        temp_path = f"/tmp/{uuid4().hex}.tmp"
-        image.save(temp_path)
-        file_size = os.path.getsize(temp_path)
-        os.remove(temp_path)
-        
-        if file_size > 5 * 1024 * 1024:  # 5MB
-            return jsonify({'success': False, 'error': 'Ukuran gambar terlalu besar (maksimal 5MB)'}), 400
-    except Exception as e:
-        print(f"Error validasi ukuran file: {e}")
-        return jsonify({'success': False, 'error': 'Gagal memvalidasi ukuran file'}), 400
+    if cropped_face_np is None or cropped_face_np.size == 0:
+        print("Gagal cropping/tidak ada wajah terdeteksi!")
+        return jsonify({'success': False, 'error': 'Gagal mendeteksi atau memotong wajah dari gambar.'}), 400
     
-    # Simpan gambar asli ke folder user
-    try:
-        raw_path = save_face_image(user_id, image)
-        print(f"Gambar disimpan sementara di: {raw_path}")
-    except Exception as e:
-        print(f"Error menyimpan gambar: {e}")
-        return jsonify({'success': False, 'error': f'Gagal menyimpan file: {e}'}), 500
-
-    # Proses deteksi dan crop wajah
-    try:
-        # Panggil fungsi detect_and_crop
-        cropped = detect_and_crop(raw_path)
-    except Exception as e:
-        print(f"Error selama deteksi wajah: {e}")
-        # Hapus file yang gagal
-        try:
-            os.remove(raw_path)
-        except:
-            pass
-        return jsonify({'success': False, 'error': f'Gagal memproses wajah: {e}'}), 500
-
-    # Cek apakah wajah terdeteksi
-    if cropped is None:
-        print(f"Wajah tidak terdeteksi untuk user: {user_id}")
-        try:
-            os.remove(raw_path)
-        except:
-            pass
-        return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi. Pastikan wajah terlihat jelas dan tidak tertutup.'}), 400
-
-    # Timpa file asli dengan hasil crop (dalam format grayscale)
-    cv2.imwrite(raw_path, cropped)
-    print(f"Wajah berhasil di-crop dan disimpan ulang di: {raw_path}")
-
+    # Timpa gambar asli dengan gambar wajah yang sudah di-crop dan grayscale
+    cv2.imwrite(raw_path, cropped_face_np)
+    
     # Upload ke Firebase Storage
-    try:
-        firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
-        print(f"Gambar diupload ke Firebase: {firebase_url}")
-    except Exception as e:
-        print(f"Error upload Firebase: {e}")
-        return jsonify({'success': False, 'error': f'Gagal mengunggah ke Firebase: {e}'}), 500
+    firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
 
-
-    elapsed = time.time() - start_time
-    print(f"Registrasi wajah selesai dalam {elapsed:.2f} detik")
+    # Retrain dan simpan model
+    # Pastikan train_and_evaluate() mengambil data dari FACES_DIR dan menghasilkan MODEL_PATH & LABELS_MAP_PATH
+    metrics = train_and_evaluate() 
     
-    return jsonify({
-        'success': True,
-        'firebase_image_url': firebase_url,
-        'processing_time': elapsed
-    })
-
-def save_face_image(user_id: str, image_file) -> str:
-    """
-    Simpan gambar upload ke folder faces/<user_id>/N.jpg
-    Folder user_id akan otomatis dibuat kalau belum ada.
-    Mengembalikan path file yang disimpan.
-    """
-    user_dir = os.path.join(FACES_DIR, user_id)
-    os.makedirs(user_dir, exist_ok=True)
-    
-    # Hitung file yang sudah ada
-    existing_files = [f for f in os.listdir(user_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-    next_num = len(existing_files) + 1
-    
-    # Buat nama file baru
-    dst = os.path.join(user_dir, f"{next_num}.jpg")
-    
-    # Simpan file
-    image_file.save(dst)
-    
-    return dst
-
-
-@app.route('/retrain_model', methods=['POST'])
-def retrain_model():
-    # (Opsional tapi direkomendasikan) Tambahkan secret key untuk keamanan
-    secret_key = request.headers.get('X-Secret-Key')
-    if secret_key != "KATA_RAHASIA_ANDA": # Ganti dengan secret key yang aman
-        return jsonify({'success': False, 'error': 'Akses ditolak'}), 403
-
-    try:
-        print("Memulai pelatihan model secara manual...")
-        start_time = time.time()
-        metrics = train_and_evaluate()
-        elapsed = time.time() - start_time
-        print(f"Model berhasil dilatih ulang dalam {elapsed:.2f} detik. Metrics: {metrics}")
-        
-        return jsonify({
-            'success': True, 
-            'message': 'Model berhasil dilatih ulang.',
-            'metrics': metrics,
-            'training_time': elapsed
-        })
-    except Exception as e:
-        print(f"Error selama pelatihan manual: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    return jsonify({ 'success': True, 'metrics': metrics, 'firebase_image_url': firebase_url })
 
 @app.route('/verify_face', methods=['POST'])
 def verify_face():
     image = request.files.get('image')
     if not image:
         return jsonify({'success': False, 'error': 'image tidak ada di request'}), 400
-    # preprocess & predict
-    tmp = 'tmp.jpg'; image.save(tmp)
-    gray = detect_and_crop(tmp); os.remove(tmp)
+    
+    # Simpan gambar sementara
+    tmp_path = 'tmp_verify.jpg'
+    image.save(tmp_path)
+
+    # Baca gambar sementara
+    img_raw = cv2.imread(tmp_path)
+    if img_raw is None:
+        os.remove(tmp_path)
+        return jsonify({'success': False, 'error': 'Gagal memuat gambar untuk verifikasi.'}), 400
+
+    # Deteksi dan crop wajah
+    cropped_face_np = detect_and_crop(img_raw)
+    os.remove(tmp_path) # Hapus file sementara setelah diproses
+
+    if cropped_face_np is None or cropped_face_np.size == 0:
+        return jsonify({'success': False, 'error': 'Tidak ada wajah terdeteksi untuk verifikasi.'}), 400
+
     model, lblmap = load_model_and_labels()
     if model is None:
-        return jsonify({'success': False, 'error': 'Model belum ada'}), 400
-    label, conf = model.predict(gray)
-    return jsonify({ 'success': True, 'user_id': lblmap[label], 'confidence': float(conf) })
+        return jsonify({'success': False, 'error': 'Model pengenalan wajah belum dilatih.'}), 400
+    
+    # Prediksi menggunakan model LBPH
+    label, conf = model.predict(cropped_face_np)
+    
+    # Pastikan label ada di label_map
+    user_id_predicted = lblmap.get(label, "unknown")
 
-# --- Tambahan: Endpoint untuk melihat daftar file wajah user ---
-@app.route('/list_user_faces', methods=['GET'])
-def list_user_faces():
-    user_id = request.args.get('user_id')
-    if not user_id:
-        return jsonify({'success': False, 'error': 'Parameter user_id wajib diisi'}), 400
-    user_dir = os.path.join(FACES_DIR, user_id)
-    if not os.path.exists(user_dir):
-        return jsonify({'success': False, 'files': [], 'error': 'User belum punya data'}), 200
-    files = [f for f in os.listdir(user_dir) if f.lower().endswith('.jpg')]
-    return jsonify({'success': True, 'files': files}), 200
+    # Anda bisa menambahkan threshold di sini juga untuk verifikasi
+    # Misalnya, jika confidence terlalu tinggi (tidak mirip), anggap tidak cocok
+    # if conf > YOUR_VERIFICATION_THRESHOLD:
+    #     user_id_predicted = "unknown"
 
-# --- Tambahan: Endpoint untuk download/lihat gambar user tertentu ---
-@app.route('/get_face_image', methods=['GET'])
-def get_face_image():
-    user_id = request.args.get('user_id')
-    filename = request.args.get('filename')
-    if not user_id or not filename:
-        return jsonify({'success': False, 'error': 'Parameter user_id dan filename wajib diisi'}), 400
-    user_dir = os.path.join(FACES_DIR, user_id)
-    file_path = os.path.join(user_dir, filename)
-    if not os.path.exists(file_path):
-        return jsonify({'success': False, 'error': 'File tidak ditemukan'}), 404
-    return send_from_directory(user_dir, filename)
+    return jsonify({ 'success': True, 'user_id': user_id_predicted, 'confidence': float(conf) })
 
-import traceback
-
-# Di file: app.py
-
-# GANTI endpoint /find_my_photos
+# --- Endpoint untuk memulai pencarian foto (DISPATCH JOB) ---
 @app.route('/start_photo_search', methods=['POST'])
 def start_photo_search():
-    print("\n===== Endpoint /start_photo_search DIPANGGIL =====\n")
+    print("\n===== Endpoint /start_photo_search DIPANGGIL (DISPATCHING JOB) =====\n")
+    
     if 'image' not in request.files:
         return jsonify({'success': False, 'error': 'File gambar tidak ditemukan'}), 400
 
     image = request.files['image']
+    job_id = str(uuid4()) # Buat ID tugas unik
     
-    # Buat ID unik untuk tugas ini
-    job_id = str(uuid4())
-    
-    # Simpan gambar klien ke Firebase Storage agar bisa diakses worker
-    # Anda sudah punya fungsi upload_to_firebase, kita pakai itu
-    # Misal user_id untuk file sementara adalah 'search-requests'
-    filename = f"{job_id}.jpg"
-    tmp_path = f"/tmp/{filename}" # Gunakan folder /tmp yang biasanya tersedia
-    image.save(tmp_path)
-    
-    client_image_url = upload_to_firebase(tmp_path, "search-requests", filename)
-    os.remove(tmp_path)
+    # Simpan gambar klien ke Firebase Storage untuk diakses oleh worker
+    # Gunakan nama file yang unik untuk job ini
+    client_image_filename = f"client_search_face_{job_id}.jpg"
+    temp_local_path = os.path.join("/tmp", client_image_filename) # Simpan sementara di /tmp
+    image.save(temp_local_path)
 
-    # Buat dokumen tugas baru di Firestore
-    db = firestore.client()
-    job_ref = db.collection('photo_search_jobs').document(job_id)
-    job_ref.set({
-        'status': 'pending',
-        'createdAt': firestore.SERVER_TIMESTAMP,
+    # Baca gambar yang baru disimpan untuk diproses oleh detect_and_crop
+    img_raw_client = cv2.imread(temp_local_path)
+    if img_raw_client is None:
+        os.remove(temp_local_path)
+        return jsonify({'success': False, 'error': 'Gagal memuat gambar klien untuk pencarian.'}), 400
+
+    # Deteksi dan crop wajah klien
+    cropped_client_face_np = detect_and_crop(img_raw_client)
+    
+    if cropped_client_face_np is None or cropped_client_face_np.size == 0:
+        os.remove(temp_local_path)
+        return jsonify({'success': False, 'error': 'Tidak ada wajah terdeteksi pada gambar klien untuk pencarian.'}), 400
+
+    # Timpa file sementara dengan wajah yang sudah di-crop dan grayscale
+    cv2.imwrite(temp_local_path, cropped_client_face_np)
+
+    # Upload gambar wajah klien yang sudah di-crop ke Firebase Storage
+    # Ini akan diakses oleh worker
+    client_image_url = upload_to_firebase(temp_local_path, "search_clients", client_image_filename)
+    os.remove(temp_local_path) # Hapus file lokal sementara
+
+    # Buat entri tugas di Firestore
+    job_data = {
         'clientImageURL': client_image_url,
+        'status': 'pending', # Status awal
+        'progress': 0,
+        'total': 0, # Akan diisi oleh worker
         'results': [],
-        'error': None
-    })
+        'error': None,
+        'createdAt': firestore.SERVER_TIMESTAMP # Timestamp kapan job dibuat
+    }
+    db.collection('photo_search_jobs').document(job_id).set(job_data)
 
     print(f"Tugas pencarian dibuat dengan job_id: {job_id}")
     return jsonify({'success': True, 'job_id': job_id})
 
-# TAMBAHKAN endpoint baru ini
+# --- Endpoint untuk mendapatkan status pencarian foto ---
 @app.route('/get_search_status', methods=['GET'])
 def get_search_status():
     job_id = request.args.get('job_id')
     if not job_id:
         return jsonify({'success': False, 'error': 'Parameter job_id wajib diisi'}), 400
         
-    db = firestore.client()
     job_ref = db.collection('photo_search_jobs').document(job_id)
     job_doc = job_ref.get()
 
@@ -324,20 +245,16 @@ def get_search_status():
     return jsonify({'success': True, 'job_data': job_doc.to_dict()})
 
 
-
-
-
 # --- Debug Endpoint: Lihat Isi Folder Railway ---
 @app.route('/debug_ls', methods=['GET'])
 def debug_ls():
     result = {}
-    for folder in ['faces', '.', 'models']:
+    for folder in ['faces', '.', 'models', '/tmp']: # Tambahkan /tmp untuk debugging
         try:
             result[folder] = os.listdir(folder)
         except Exception as e:
             result[folder] = str(e)
     return jsonify(result)
-
 
 @app.route('/debug_ls2')
 def debug_ls2():
@@ -355,5 +272,5 @@ def debug_ls3():
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=8000)
+
