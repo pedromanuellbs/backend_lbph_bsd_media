@@ -70,8 +70,7 @@ def _load_global_lbph_model():
 def get_all_gdrive_folder_ids():
     print("\n--- Memulai get_all_gdrive_folder_ids ---")
     db = firestore.client()
-    # Kita akan mengembalikan list tuple: [(firestore_doc_id, drive_folder_id), ...]
-    folder_ids_and_session_ids = [] 
+    folder_ids = []
     
     try:
         sessions_stream = db.collection('photo_sessions').stream()
@@ -86,19 +85,18 @@ def get_all_gdrive_folder_ids():
 
             if 'folders/' in drive_link:
                 print("     - Kondisi 'folders/ in drive_link' terpenuhi (True).")
-                drive_folder_id = drive_link.split('folders/')[1].split('?')[0]
-                # Mengembalikan Firestore Document ID dan Google Drive Folder ID
-                folder_ids_and_session_ids.append((doc.id, drive_folder_id)) 
-                print(f"     - ID Dokumen Firestore: {doc.id}, ID Folder Drive: {drive_folder_id} berhasil diekstrak.")
+                folder_id = drive_link.split('folders/')[1].split('?')[0]
+                folder_ids.append(folder_id)
+                print(f"     - ID Folder berhasil diekstrak: {folder_id}")
             else:
                 print("     - Kondisi 'folders/ in drive_link' TIDAK terpenuhi (False). Melewati...")
     
     except Exception as e:
         print(f"  [ERROR] Terjadi exception saat mengambil data dari Firestore: {e}")
 
-    print(f"  > Fungsi selesai. Daftar (Firestore Doc ID, Drive Folder ID) yang akan dikembalikan: {folder_ids_and_session_ids}")
+    print(f"  > Fungsi selesai. Daftar folder_ids yang akan dikembalikan: {folder_ids}")
     print("--- Selesai get_all_gdrive_folder_ids ---\n")
-    return folder_ids_and_session_ids # Mengembalikan list tuple
+    return folder_ids
 
 def get_drive_service():
     cred_json = os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']
@@ -243,8 +241,7 @@ def find_matching_photos(user_face_path, folder_id, threshold=105): # <--- THRES
                     'name': photo['name'],
                     'webViewLink': photo['webViewLink'],
                     'thumbnailLink': photo['thumbnailLink'],
-                    # 'sessionId': folder_id,
-                    'sessionId': session_firestore_id,
+                    'sessionId': folder_id,
                 })
             else:
                 print(f"    [TIDAK COCOK] Wajah tidak cocok di foto {photo['name']}")
