@@ -316,7 +316,8 @@ def find_my_photos():
         all_folder_ids = get_all_gdrive_folder_ids()
         print(f"DEBUG: Ditemukan {len(all_folder_ids)} folder Google Drive.")
 
-        matches = find_all_matching_photos(user_tmp, all_folder_ids, threshold=70)
+        # matches = find_all_matching_photos(user_tmp, all_folder_ids, threshold=70)
+        matches = find_all_matching_photos(user_tmp, all_folder_ids)
 
         print("INFO: Pencarian foto selesai. Mengirimkan respons.")
         return jsonify({'success': True, 'matched_photos': matches})
