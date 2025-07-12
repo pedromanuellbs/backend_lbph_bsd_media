@@ -25,9 +25,8 @@ mtcnn = MTCNN(image_size=96, margin=0, keep_all=False, post_process=True, device
 # ------------------------------------------
 
 # --- GLOBAL: Muat model LBPH dan label map sekali ---
-# Ini akan dimuat saat gdrive_match.py pertama kali diimpor
-# atau saat fungsi yang menggunakannya pertama kali dipanggil.
-# Ini penting agar tidak memuat model 217MB berulang kali.
+# Model global ini masih diperlukan untuk endpoint /register_face dan /verify_face di app.py
+# yang menggunakan model LBPH utama untuk klasifikasi.
 _lbph_model = None
 _label_to_user_map = None # Peta dari label int ke user_id string
 
@@ -66,9 +65,6 @@ def _load_global_lbph_model():
             _label_to_user_map = {}
             return None, {}
     return _lbph_model, _label_to_user_map
-
-# Panggil sekali saat modul diimpor (atau panggil di awal fungsi yang membutuhkannya)
-# _load_global_lbph_model() # Komentar ini karena akan dipanggil di is_face_match
 
 
 def get_all_gdrive_folder_ids():
@@ -162,15 +158,9 @@ def detect_and_crop_face(img):
     face_np = cv2.cvtColor(face_np, cv2.COLOR_RGB2BGR)
     return face_np
 
-def is_face_match(user_face_img, target_img, threshold=100): # <--- THRESHOLD DIUBAH DI SINI
-    print("--- Memulai is_face_match (Logika Akurasi Baru) ---")
+def is_face_match(user_face_img, target_img, threshold=80): # <--- THRESHOLD DEFAULT DIUBAH KE 80
+    print("--- Memulai is_face_match (Logika Perbandingan 1:1) ---")
     
-    # Pastikan model LBPH global sudah dimuat
-    lbph_model, label_to_user_map = _load_global_lbph_model()
-    if lbph_model is None or not label_to_user_map:
-        print("ERROR: Model LBPH global tidak dimuat atau label map kosong. Tidak dapat melakukan perbandingan.")
-        return False
-
     # Deteksi dan crop wajah dari FOTO KLIEN yang di-upload
     face1_cropped = detect_and_crop_face(user_face_img) # Wajah Klien (sudah di-crop dan distandardisasi)
     face2_cropped = detect_and_crop_face(target_img) # Wajah Target dari Drive (sudah di-crop dan distandardisasi)
@@ -189,46 +179,41 @@ def is_face_match(user_face_img, target_img, threshold=100): # <--- THRESHOLD DI
     gray1 = cv2.cvtColor(face1_cropped, cv2.COLOR_BGR2GRAY)
     gray2 = cv2.cvtColor(face2_cropped, cv2.COLOR_BGR2GRAY)
     
-    # --- LOGIKA PERBANDINGAN AKURASI BARU ---
-    # 1. Prediksi wajah klien yang di-upload menggunakan model LBPH utama
-    # Ini akan memberikan confidence score seberapa mirip wajah klien dengan salah satu wajah di dataset
-    label1, conf1 = lbph_model.predict(gray1)
-    
-    # 2. Prediksi wajah target dari Google Drive menggunakan model LBPH utama
-    label2, conf2 = lbph_model.predict(gray2)
+    # --- LOGIKA PERBANDINGAN 1:1 DENGAN MODEL SEMENTARA ---
+    # Buat model LBPH sementara
+    temp_model = cv2.face.LBPHFaceRecognizer_create()
 
-    print(f"  > Klien: Label {label1}, Conf {conf1:.2f} (User: {label_to_user_map.get(label1, 'UNKNOWN')})")
-    print(f"  > Target: Label {label2}, Conf {conf2:.2f} (User: {label_to_user_map.get(label2, 'UNKNOWN')})")
+    # Latih model sementara HANYA dengan wajah klien
+    # Beri label 0 untuk wajah klien
+    temp_model.train([gray1], np.array([0]))
+
+    # Prediksi wajah target menggunakan model sementara ini
+    # conf akan menjadi jarak antara wajah target dan wajah klien (label 0)
+    label, conf = temp_model.predict(gray2)
+
+    print(f"  > Skor Kemiripan (Confidence): {conf:.2f}")
     print(f"  > Ambang Batas (Threshold): {threshold}")
 
-    # Logika perbandingan:
-    # Asumsi: user_face_img adalah wajah dari user yang login (misal: 'akucapek@gmail.com')
-    # Kita ingin mencari foto di Drive yang juga dikenali sebagai 'akucapek@gmail.com'
-    # DAN memiliki confidence score yang rendah (mirip).
+    # Logika perbandingan: conf < threshold (makin kecil conf, makin mirip)
+    is_match = conf < threshold
 
-    # Paling sederhana: Bandingkan apakah kedua wajah (klien dan target) dikenali sebagai label yang sama
-    # DAN confidence score-nya di bawah threshold.
-    # Confidence 0.00 menunjukkan kecocokan sempurna, jadi kita perlu nilai yang lebih tinggi.
-    # Threshold 70 adalah nilai yang umum untuk LBPH, tapi bisa disesuaikan.
-
-    is_match = False
-    if label1 != -1 and label2 != -1 and label1 == label2:
-        # Jika kedua wajah dikenali sebagai orang yang sama,
-        # dan confidence score (jarak) wajah target cukup rendah
-        # (artinya target mirip dengan kelas yang diprediksi)
-        if conf2 < threshold: # Conf2 adalah jarak wajah target ke kelas yang diprediksi
-            is_match = True
-            print(f"  > Hasil Perbandingan: COCOK (Label sama, Conf Target OK)")
-        else:
-            print(f"  > Hasil Perbandingan: TIDAK COCOK (Label sama, tapi Conf Target terlalu tinggi)")
+    if is_match:
+        print(f"  > Hasil Perbandingan: COCOK")
     else:
-        print(f"  > Hasil Perbandingan: TIDAK COCOK (Label berbeda atau tidak dikenali)")
+        print(f"  > Hasil Perbandingan: TIDAK COCOK")
+
+    # --- DEBUGGING: Cek apakah confidence 0.00 untuk gambar berbeda ---
+    # Ini adalah log untuk membantu debugging jika conf selalu 0.00.
+    # Jika Anda melihat ini, itu menunjukkan masalah mendasar dengan LBPH.
+    if conf == 0.00 and not np.array_equal(gray1, gray2):
+        print("WARNING: Confidence is 0.00 for non-identical images. This indicates an issue with LBPH or input.")
+    # --- END DEBUGGING ---
 
     print("--- Selesai is_face_match ---\n")
     
     return is_match
 
-def find_matching_photos(user_face_path, folder_id, threshold=100): # <--- THRESHOLD DIUBAH DI SINI
+def find_matching_photos(user_face_path, folder_id, threshold=80): # <--- THRESHOLD DEFAULT DIUBAH KE 80
     user_img = cv2.imread(user_face_path)
     if user_img is None:
         print(f"Error: Gagal membaca file wajah user di {user_face_path}")
@@ -264,7 +249,7 @@ def find_matching_photos(user_face_path, folder_id, threshold=100): # <--- THRES
             
     return matched_in_folder
 
-def find_all_matching_photos(user_face_path, all_folder_ids, threshold=100): # <--- THRESHOLD DIUBAH DI SINI
+def find_all_matching_photos(user_face_path, all_folder_ids, threshold=80): # <--- THRESHOLD DEFAULT DIUBAH KE 80
     all_matches = []
     for folder_id in all_folder_ids:
         matches = find_matching_photos(user_face_path, folder_id, threshold)
