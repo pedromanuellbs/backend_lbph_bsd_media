@@ -162,7 +162,7 @@ def detect_and_crop_face(img):
     face_np = cv2.cvtColor(face_np, cv2.COLOR_RGB2BGR)
     return face_np
 
-def is_face_match(user_face_img, target_img, threshold=70):
+def is_face_match(user_face_img, target_img, threshold=100): # <--- THRESHOLD DIUBAH DI SINI
     print("--- Memulai is_face_match (Logika Akurasi Baru) ---")
     
     # Pastikan model LBPH global sudah dimuat
@@ -228,7 +228,7 @@ def is_face_match(user_face_img, target_img, threshold=70):
     
     return is_match
 
-def find_matching_photos(user_face_path, folder_id, threshold=70):
+def find_matching_photos(user_face_path, folder_id, threshold=100): # <--- THRESHOLD DIUBAH DI SINI
     user_img = cv2.imread(user_face_path)
     if user_img is None:
         print(f"Error: Gagal membaca file wajah user di {user_face_path}")
@@ -264,7 +264,7 @@ def find_matching_photos(user_face_path, folder_id, threshold=70):
             
     return matched_in_folder
 
-def find_all_matching_photos(user_face_path, all_folder_ids, threshold=70):
+def find_all_matching_photos(user_face_path, all_folder_ids, threshold=100): # <--- THRESHOLD DIUBAH DI SINI
     all_matches = []
     for folder_id in all_folder_ids:
         matches = find_matching_photos(user_face_path, folder_id, threshold)
