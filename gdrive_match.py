@@ -158,7 +158,7 @@ def detect_and_crop_face(img):
     face_np = cv2.cvtColor(face_np, cv2.COLOR_RGB2BGR)
     return face_np
 
-def is_face_match(user_face_img, target_img, threshold=80): # <--- THRESHOLD DEFAULT DIUBAH KE 80
+def is_face_match(user_face_img, target_img, threshold=120): # <--- THRESHOLD DEFAULT DIUBAH KE 120
     print("--- Memulai is_face_match (Logika Perbandingan 1:1) ---")
     
     # Deteksi dan crop wajah dari FOTO KLIEN yang di-upload
@@ -187,6 +187,10 @@ def is_face_match(user_face_img, target_img, threshold=80): # <--- THRESHOLD DEF
     # Beri label 0 untuk wajah klien
     temp_model.train([gray1], np.array([0]))
 
+    # DEBUG: Prediksi wajah klien itu sendiri untuk melihat confidence
+    label_self, conf_self = temp_model.predict(gray1)
+    print(f"  > DEBUG: Klien (gray1) diprediksi terhadap dirinya sendiri: Label {label_self}, Conf {conf_self:.2f}")
+
     # Prediksi wajah target menggunakan model sementara ini
     # conf akan menjadi jarak antara wajah target dan wajah klien (label 0)
     label, conf = temp_model.predict(gray2)
@@ -213,7 +217,7 @@ def is_face_match(user_face_img, target_img, threshold=80): # <--- THRESHOLD DEF
     
     return is_match
 
-def find_matching_photos(user_face_path, folder_id, threshold=80): # <--- THRESHOLD DEFAULT DIUBAH KE 80
+def find_matching_photos(user_face_path, folder_id, threshold=120): # <--- THRESHOLD DEFAULT DIUBAH KE 120
     user_img = cv2.imread(user_face_path)
     if user_img is None:
         print(f"Error: Gagal membaca file wajah user di {user_face_path}")
@@ -249,7 +253,7 @@ def find_matching_photos(user_face_path, folder_id, threshold=80): # <--- THRESH
             
     return matched_in_folder
 
-def find_all_matching_photos(user_face_path, all_folder_ids, threshold=80): # <--- THRESHOLD DEFAULT DIUBAH KE 80
+def find_all_matching_photos(user_face_path, all_folder_ids, threshold=120): # <--- THRESHOLD DEFAULT DIUBAH KE 120
     all_matches = []
     for folder_id in all_folder_ids:
         matches = find_matching_photos(user_face_path, folder_id, threshold)
