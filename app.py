@@ -227,16 +227,18 @@ def find_my_photos():
 
         image = request.files['image']
         user_tmp = 'tmp_user_search.jpg'
-        
+
         os.makedirs(os.path.dirname(user_tmp) or '.', exist_ok=True)
         image.save(user_tmp)
         print(f"DEBUG: Gambar klien untuk pencarian disimpan sementara ke: {user_tmp}")
 
+        import cv2
+        import numpy as np
         img = cv2.imread(user_tmp)
         if img is None:
             print("ERROR: Gagal memuat file gambar klien untuk pencarian.")
             return jsonify({'success': False, 'error': 'Gagal memuat file gambar klien'}), 400
-        
+
         if img.dtype != np.uint8:
             img = cv2.convertScaleAbs(img)
             print("DEBUG: Gambar klien dikonversi ke format 8-bit.")
@@ -257,11 +259,13 @@ def find_my_photos():
             matched_photos = []
             for link in drive_folders:
                 if 'folders/' in link:
-                    # Ambil folder_id dan (opsional) sessionId dari link
                     folder_id = link.split('folders/')[1].split('?')[0]
-                    session_id = None
-                    # Jika ingin dapatkan session_id, perlu mapping dari frontend atau Firestore
+                    # --- Gunakan folder_id sebagai session_id (atau mapping Firestore jika tersedia) ---
+                    session_id = folder_id
                     matches = find_matching_photos(user_tmp, folder_id, session_id)
+                    # Inject sessionId ke setiap hasil
+                    for m in matches:
+                        m['sessionId'] = session_id
                     matched_photos.extend(matches)
             print("INFO: Pencarian foto berdasarkan drive_links selesai. Mengirimkan respons.")
             return jsonify({'success': True, 'matched_photos': matched_photos})
@@ -271,6 +275,10 @@ def find_my_photos():
         all_folder_ids = get_all_gdrive_folder_ids()
         print(f"DEBUG: Ditemukan {len(all_folder_ids)} folder Google Drive.")
         matches = find_all_matching_photos(user_tmp, all_folder_ids)
+        # Inject sessionId ke setiap hasil
+        for m in matches:
+            session_id = m.get('sessionId') or m.get('folder_id')
+            m['sessionId'] = session_id
         print("INFO: Pencarian foto seluruh database selesai. Mengirimkan respons.")
         return jsonify({'success': True, 'matched_photos': matches})
 
@@ -279,10 +287,9 @@ def find_my_photos():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        if os.path.exists(user_tmp):
-            os.remove(user_tmp)
-            print(f"DEBUG: Menghapus file sementara: {user_tmp}")
-
+        if os.path.exists('tmp_user_search.jpg'):
+            os.remove('tmp_user_search.jpg')
+            print(f"DEBUG: Menghapus file sementara: tmp_user_search.jpg")
 @app.route('/debug_ls', methods=['GET'])
 def debug_ls():
     result = {}
