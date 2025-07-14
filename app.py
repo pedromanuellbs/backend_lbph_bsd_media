@@ -257,11 +257,14 @@ def find_my_photos():
 
             print(f"DEBUG: Filter pencarian hanya di folder Google Drive berikut: {drive_folders}")
             matched_photos = []
+            # Ambil semua sesi dari Firestore untuk mapping folder_id -> doc_id
+            folder_data = get_all_gdrive_folder_ids()  # list of dict: {'firestore_doc_id', 'drive_folder_id'}
+            folderid_to_docid = {fd['drive_folder_id']: fd['firestore_doc_id'] for fd in folder_data}
             for link in drive_folders:
                 if 'folders/' in link:
                     folder_id = link.split('folders/')[1].split('?')[0]
-                    # --- Gunakan folder_id sebagai session_id (atau mapping Firestore jika tersedia) ---
-                    session_id = folder_id
+                    # Dapatkan session_id (Firestore doc id) dari mapping
+                    session_id = folderid_to_docid.get(folder_id)
                     matches = find_matching_photos(user_tmp, folder_id, session_id)
                     # Inject sessionId ke setiap hasil
                     for m in matches:
@@ -272,10 +275,10 @@ def find_my_photos():
 
         # --- MODE 2: Cari seluruh database fotografer (home.dart) ---
         print("DEBUG: Tidak ada drive_links, mencari ke seluruh database sesi.")
-        all_folder_ids = get_all_gdrive_folder_ids()
-        print(f"DEBUG: Ditemukan {len(all_folder_ids)} folder Google Drive.")
-        matches = find_all_matching_photos(user_tmp, all_folder_ids)
-        # Inject sessionId ke setiap hasil
+        all_folder_data = get_all_gdrive_folder_ids()  # list of dict: {'firestore_doc_id', 'drive_folder_id'}
+        print(f"DEBUG: Ditemukan {len(all_folder_data)} folder Google Drive.")
+        matches = find_all_matching_photos(user_tmp, all_folder_data)
+        # Inject sessionId ke setiap hasil jika perlu (harusnya sudah diisi)
         for m in matches:
             session_id = m.get('sessionId') or m.get('folder_id')
             m['sessionId'] = session_id
