@@ -3,8 +3,6 @@ print("=== DEBUG: Ini app.py terbaru versi 2025-07-17 ===")
 import os
 import json
 import traceback
-import pickle
-import face_recognition
 import tempfile
 import numpy as np
 import requests
@@ -14,13 +12,13 @@ import time # Import time untuk timestamp
 
 from face_preprocessing import detect_and_crop
 # Import fungsi yang diperbarui dari face_data
-from face_data import update_lbph_model_incrementally, train_and_evaluate_full_dataset, load_model_and_labels
+from face_data import update_lbph_model_incrementally, load_model_and_labels
 
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke file config Anda
 
 # --- Import dan setup Firebase Admin SDK ---
 import firebase_admin
-from firebase_admin import credentials, storage, firestore, initialize_app
+from firebase_admin import credentials, storage
 
 from gdrive_match import find_matching_photos, find_all_matching_photos, get_all_gdrive_folder_ids
 
