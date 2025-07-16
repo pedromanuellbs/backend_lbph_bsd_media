@@ -57,7 +57,7 @@ face_bp = Blueprint('face', __name__)
 app.register_blueprint(face_bp)
 
 
-@face_bp.route('/face-login', methods=['POST'])
+@face_bp.route('/face_login', methods=['POST'])
 def face_login():
     print("form:", request.form)
     print("files:", request.files)
