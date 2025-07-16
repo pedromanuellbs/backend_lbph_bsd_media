@@ -57,10 +57,52 @@ face_bp = Blueprint('face', __name__)
 
 @face_bp.route('/find-face-users', methods=['POST'])
 def find_face_users():
-    # Alias ke verify_face agar frontend tetap kompatibel
-    return verify_face()
 
+    print("form:", request.form)
+    print("files:", request.files)
+    user_id = request.form.get('user_id')  # email klien
+    image_file = request.files.get('image')
 
+    if not user_id or not image_file:
+        return jsonify({'error': 'user_id dan image wajib diisi'}), 400
+
+    # Simpan foto user login sementara
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_img:
+        image_file.save(temp_img.name)
+        temp_img_path = temp_img.name
+
+    # Ekstrak encoding dari foto user login
+    query_image = face_recognition.load_image_file(temp_img_path)
+    query_encodings = face_recognition.face_encodings(query_image)
+    os.remove(temp_img_path)
+    if not query_encodings:
+        return jsonify({'error': 'Wajah tidak terdeteksi di foto.'}), 400
+    query_encoding = query_encodings[0]
+
+    # Ambil seluruh foto dari folder email klien di Firebase Storage
+    bucket = storage.bucket()
+    prefix = f'face-dataset/{user_id}/'
+    blobs = list(bucket.list_blobs(prefix=prefix))
+    matches = []
+    for blob in blobs:
+        if blob.name.lower().endswith(('.jpg', '.jpeg', '.png')):
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_db_img:
+                blob.download_to_filename(temp_db_img.name)
+                db_image = face_recognition.load_image_file(temp_db_img.name)
+                db_encodings = face_recognition.face_encodings(db_image)
+                os.remove(temp_db_img.name)
+                if db_encodings:
+                    match_result = face_recognition.compare_faces([db_encodings[0]], query_encoding, tolerance=0.5)
+                    if match_result[0]:
+                        matches.append(blob.name)
+
+    if not matches:
+        return jsonify({'status': 'not_found', 'message': 'Wajah tidak cocok di database.'}), 404
+
+    return jsonify({
+        'status': 'success',
+        'matches': matches
+    }), 200
 
 # Registrasi blueprint
 app.register_blueprint(face_bp)
@@ -135,24 +177,20 @@ def home():
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
-    # ... isi fungsi ...
     print("===== MULAI register_face =====")
     user_id = request.form.get('user_id')
     image   = request.files.get('image')
     if not user_id or not image:
         print("ERROR: user_id atau image tidak ada di request.")
         return jsonify({'success': False, 'error': 'user_id atau image tidak ada di request'}), 400
-
     raw_path = save_face_image(user_id, image)
     if raw_path is None:
         return jsonify({'success': False, 'error': 'Gagal menyimpan gambar yang diunggah'}), 500
-
     try:
         debug_firebase_url = upload_to_firebase(raw_path, user_id, f"debug_raw_{os.path.basename(raw_path)}")
         print(f"DEBUG: Gambar mentah diupload ke Firebase untuk debug: {debug_firebase_url}")
     except Exception as e:
         print(f"ERROR: Gagal mengupload gambar mentah ke Firebase: {e}")
-
     try:
         firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
         print(f"DEBUG: Gambar diupload ke Firebase: {firebase_url}")
@@ -160,37 +198,16 @@ def register_face():
         print(f"ERROR: Gagal mengupload gambar ke Firebase: {e}")
         traceback.print_exc()
         return jsonify({'success': False, 'error': 'Gagal mengupload gambar ke Firebase'}), 500
-
     print("DEBUG: Memulai update model LBPH secara incremental...")
-    success, model, label_map = update_lbph_model_incrementally(raw_path, user_id, return_model=True)
-    user_dir = os.path.join(FACES_DIR, user_id)
-
-    # Simpan model dan label map ke folder user
-    try:
-        lbph_model_path = os.path.join(user_dir, "lbph_model.xml")
-        labels_map_path = os.path.join(user_dir, "labels_map.txt")
-        model.save(lbph_model_path)
-        with open(labels_map_path, "w") as f:
-            f.write(json.dumps(label_map))
-        print(f"DEBUG: Model dan label map berhasil disimpan ke {user_dir}")
-
-        # Upload ke Firebase Storage per user
-        upload_to_firebase(lbph_model_path, user_id, "lbph_model.xml")
-        upload_to_firebase(labels_map_path, user_id, "labels_map.txt")
-        print("DEBUG: Model dan label map diupload ke Firebase Storage.")
-    except Exception as e:
-        print(f"ERROR: Gagal simpan/upload lbph_model.xml atau labels_map.txt: {e}")
-
+    success = update_lbph_model_incrementally(raw_path, user_id)
     try:
         if os.path.exists(raw_path):
             os.remove(raw_path)
             print(f"DEBUG: Menghapus file sementara: {raw_path}")
     except Exception as e:
         print(f"WARNING: Gagal menghapus file sementara {raw_path}: {e}")
-
     if not success:
         return jsonify({'success': False, 'error': 'Gagal mengupdate model LBPH'}), 500
-
     print("INFO: Register face & update model berhasil.")
     return jsonify({ 'success': True, 'firebase_image_url': firebase_url })
 
