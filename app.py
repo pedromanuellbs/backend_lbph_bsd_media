@@ -59,6 +59,8 @@ def handle_exceptions(e):
 
 # ─── Konstanta ─────────────────────────────────────────────────────────────
 os.makedirs(FACES_DIR, exist_ok=True)
+TRAINED_MODELS_DIR = 'models'
+LBPH_CONFIDENCE_THRESHOLD = 60  # sesuaikan jika perlu
 
 # --- TEMPAT TERBAIK UNTUK FUNGSI DOWNLOAD_FILE_FROM_URL ---
 def download_file_from_url(url, destination):
@@ -125,24 +127,23 @@ def find_face_users():
         return jsonify({'success': False, 'error': 'image dan user_id wajib'}), 400
 
     file = request.files['image']
-    user_id = request.form['user_id']
+    user_id = str(request.form['user_id'])
 
     if not allowed_file(file.filename):
         return jsonify({'success': False, 'error': 'Ekstensi file tidak diperbolehkan'}), 400
 
     model_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_lbph.yml')
+    label_map_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_labels.npy')
     if not os.path.exists(model_path):
         return jsonify({'success': False, 'error': 'Model wajah user tidak ditemukan'}), 404
-
-    model = cv2.face.LBPHFaceRecognizer_create()
-    model.read(model_path)
-
-    label_map_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_labels.npy')
     if not os.path.exists(label_map_path):
         return jsonify({'success': False, 'error': 'Label map user tidak ditemukan'}), 404
 
+    model = cv2.face.LBPHFaceRecognizer_create()
+    model.read(model_path)
     label_map = np.load(label_map_path, allow_pickle=True).item()
 
+    # Baca gambar input
     in_mem_file = io.BytesIO(file.read())
     pil_image = Image.open(in_mem_file).convert('L')
     img = np.array(pil_image)
@@ -152,8 +153,13 @@ def find_face_users():
     if len(faces) == 0:
         return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
 
+    # Ambil ROI wajah pertama saja
+    (x, y, w, h) = faces[0]
+    input_face_roi = cv2.resize(img[y:y+h, x:x+w], (100, 100))
+
     matched_photos = []
 
+    # Query photo dari Firestore
     photos_ref = db.collection('photos').where('owner_id', '==', user_id)
     photo_docs = photos_ref.stream()
 
@@ -170,11 +176,11 @@ def find_face_users():
             pil_photo = Image.open(io.BytesIO(img_bytes)).convert('L')
             np_photo = np.array(pil_photo)
             faces_in_photo = face_cascade.detectMultiScale(np_photo, scaleFactor=1.1, minNeighbors=5)
-            for (x, y, w, h) in faces_in_photo:
-                face_roi = np_photo[y:y+h, x:x+w]
+            for (x2, y2, w2, h2) in faces_in_photo:
+                face_roi = cv2.resize(np_photo[y2:y2+h2, x2:x2+w2], (100, 100))
                 try:
-                    label, conf = model.predict(cv2.resize(face_roi, (img.shape[1], img.shape[0])))
-                    if label_map.get(label) == user_id and conf < LBPH_CONFIDENCE_THRESHOLD:
+                    label, conf = model.predict(face_roi)
+                    if str(label_map.get(label)) == str(user_id) and conf < LBPH_CONFIDENCE_THRESHOLD:
                         matched_photos.append(photo_url)
                         break
                 except Exception as e:
@@ -187,6 +193,57 @@ def find_face_users():
     print(f"Matched photos: {matched_photos}")
     return jsonify({'success': True, 'matched_photos': matched_photos}), 200
 
+
+@app.route('/login-face', methods=['POST'])
+def login_face():
+    if 'image' not in request.files or 'username' not in request.form:
+        return jsonify({'success': False, 'error': 'image dan username wajib'}), 400
+
+    file = request.files['image']
+    username = request.form['username']
+
+    if not allowed_file(file.filename):
+        return jsonify({'success': False, 'error': 'Ekstensi file tidak diperbolehkan'}), 400
+
+    # 1. Cari user_id berdasarkan username
+    user_query = db.collection('users').where('username', '==', username).limit(1).get()
+    if not user_query:
+        return jsonify({'success': False, 'error': 'Username tidak ditemukan'}), 404
+
+    user_doc = user_query[0]
+    user_id = str(user_doc.id)  # Atau gunakan field lain jika user_id bukan document ID
+
+    # 2. Load model dan label map milik user_id tsb
+    model_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_lbph.yml')
+    label_map_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_labels.npy')
+    if not os.path.exists(model_path) or not os.path.exists(label_map_path):
+        return jsonify({'success': False, 'error': 'Model atau label user tidak ditemukan'}), 404
+
+    model = cv2.face.LBPHFaceRecognizer_create()
+    model.read(model_path)
+    label_map = np.load(label_map_path, allow_pickle=True).item()
+
+    # 3. Proses gambar dari user
+    in_mem_file = io.BytesIO(file.read())
+    pil_image = Image.open(in_mem_file).convert('L')
+    img = np.array(pil_image)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    faces = face_cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5)
+
+    if len(faces) == 0:
+        return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
+
+    (x, y, w, h) = faces[0]
+    face_roi = cv2.resize(img[y:y+h, x:x+w], (100, 100))
+    try:
+        label, conf = model.predict(face_roi)
+        if str(label_map.get(label)) == user_id and conf < LBPH_CONFIDENCE_THRESHOLD:
+            return jsonify({'success': True, 'message': 'Login face sukses', 'user_id': user_id, 'username': username}), 200
+        else:
+            return jsonify({'success': False, 'error': 'Wajah tidak cocok dengan username ini'}), 401
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error prediksi wajah: {str(e)}'}), 500
+        
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
