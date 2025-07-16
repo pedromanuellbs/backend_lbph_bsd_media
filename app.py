@@ -1,6 +1,7 @@
 import os
 import json
 import traceback
+import pickle
 import face_recognition
 import tempfile
 import numpy as np
@@ -55,57 +56,73 @@ app = Flask(__name__)
 face_bp = Blueprint('face', __name__)
 
 
-@face_bp.route('/find-face-users', methods=['POST'])
-def find_face_users():
-
+@face_bp.route('/face-login', methods=['POST'])
+def face_login():
     print("form:", request.form)
     print("files:", request.files)
-    user_id = request.form.get('user_id')  # email klien
     image_file = request.files.get('image')
 
-    if not user_id or not image_file:
-        return jsonify({'error': 'user_id dan image wajib diisi'}), 400
+    if not image_file:
+        return jsonify({'error': 'image wajib diisi'}), 400
 
     # Simpan foto user login sementara
     with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_img:
         image_file.save(temp_img.name)
         temp_img_path = temp_img.name
 
-    # Ekstrak encoding dari foto user login
-    query_image = face_recognition.load_image_file(temp_img_path)
-    query_encodings = face_recognition.face_encodings(query_image)
-    os.remove(temp_img_path)
-    if not query_encodings:
-        return jsonify({'error': 'Wajah tidak terdeteksi di foto.'}), 400
-    query_encoding = query_encodings[0]
-
-    # Ambil seluruh foto dari folder email klien di Firebase Storage
+    # Load model LBPH & labels map dari Firebase Storage
     bucket = storage.bucket()
-    prefix = f'face-dataset/{user_id}/'
-    blobs = list(bucket.list_blobs(prefix=prefix))
-    matches = []
-    for blob in blobs:
-        if blob.name.lower().endswith(('.jpg', '.jpeg', '.png')):
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_db_img:
-                blob.download_to_filename(temp_db_img.name)
-                db_image = face_recognition.load_image_file(temp_db_img.name)
-                db_encodings = face_recognition.face_encodings(db_image)
-                os.remove(temp_db_img.name)
-                if db_encodings:
-                    match_result = face_recognition.compare_faces([db_encodings[0]], query_encoding, tolerance=0.5)
-                    if match_result[0]:
-                        matches.append(blob.name)
+    trainer_blob = bucket.blob('face-recognition-models/trainer.yml')
+    labels_blob = bucket.blob('face-recognition-models/labels.pickle')
 
-    if not matches:
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.yml') as temp_trainer, \
+         tempfile.NamedTemporaryFile(delete=False, suffix='.pickle') as temp_labels:
+        trainer_blob.download_to_filename(temp_trainer.name)
+        labels_blob.download_to_filename(temp_labels.name)
+
+        # Load LBPH model
+        recognizer = cv2.face.LBPHFaceRecognizer_create()
+        recognizer.read(temp_trainer.name)
+        # Load labels
+        with open(temp_labels.name, 'rb') as f:
+            labels = pickle.load(f)
+        # Reverse labels map: id -> email
+        labels_reverse = {v: k for k, v in labels.items()}
+
+    # Hapus file sementara model
+    os.remove(temp_trainer.name)
+    os.remove(temp_labels.name)
+
+    # Deteksi wajah pada gambar login (gunakan cascade frontalface)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    img = cv2.imread(temp_img_path)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4)
+    os.remove(temp_img_path)
+
+    if len(faces) == 0:
+        return jsonify({'error': 'Wajah tidak terdeteksi di foto.'}), 400
+
+    results = []
+    for (x, y, w, h) in faces:
+        roi_gray = gray[y:y+h, x:x+w]
+        id_, conf = recognizer.predict(roi_gray)
+        # Semakin kecil conf, semakin cocok. Biasanya threshold 50-80.
+        if conf < 60 and id_ in labels_reverse:  # threshold bisa diatur sesuai percobaan
+            matched_email = labels_reverse[id_]
+            results.append({'email': matched_email, 'confidence': float(conf)})
+
+    if not results:
         return jsonify({'status': 'not_found', 'message': 'Wajah tidak cocok di database.'}), 404
 
+    # Jika multiple faces terdeteksi, bisa kirim semua, atau hanya satu (terbaik)
     return jsonify({
         'status': 'success',
-        'matches': matches
+        'matches': results
     }), 200
 
-# Registrasi blueprint
-app.register_blueprint(face_bp)
+# Jangan lupa registrasi blueprint di app utama
+# app.register_blueprint(face_bp)
 
 # ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
