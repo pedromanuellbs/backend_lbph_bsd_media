@@ -2,10 +2,8 @@ import os
 import numpy as np
 import cv2
 from PIL import Image
-from mtcnn import MTCNN
 
 def upload_to_firebase(local_path, user_id, filename):
-    # Contoh implementasi, sesuaikan dengan SDK cloud storage kamu (misal: Google Cloud Storage)
     from google.cloud import storage
     bucket_name = "db-ta-bsd-media.firebasestorage.app"  # Ganti dengan nama bucket kamu
     storage_client = storage.Client()
@@ -14,19 +12,18 @@ def upload_to_firebase(local_path, user_id, filename):
     blob.upload_from_filename(local_path)
 
 def update_lbph_model_incrementally(image_path, user_id):
-    # 1. Load gambar dan ekstrak wajah (ROI) dengan MTCNN
-    pil_img = Image.open(image_path).convert('RGB')
-    mtcnn_detector = MTCNN()
-    faces = mtcnn_detector.detect_faces(np.array(pil_img))
-    if not faces:
-        print("ERROR: Tidak ada wajah terdeteksi pada gambar (MTCNN).")
+    # 1. Load gambar dan ekstrak wajah (ROI) dengan OpenCV Haar Cascade
+    pil_img = Image.open(image_path).convert('L')  # grayscale langsung
+    np_img = np.array(pil_img)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    faces = face_cascade.detectMultiScale(np_img, scaleFactor=1.1, minNeighbors=5)
+    if len(faces) == 0:
+        print("ERROR: Tidak ada wajah terdeteksi pada gambar (Haar Cascade).")
         return False
 
-    x, y, w, h = faces[0]['box']
-    # Perbaiki jika bounding box negatif
-    x = max(0, x)
-    y = max(0, y)
-    face_roi = pil_img.crop((x, y, x + w, y + h)).resize((100, 100)).convert('L')
+    x, y, w, h = faces[0]
+    # Crop & resize ROI
+    face_roi = pil_img.crop((x, y, x + w, y + h)).resize((100, 100))
     face_roi = np.array(face_roi)
 
     # 2. Siapkan path model & label map
