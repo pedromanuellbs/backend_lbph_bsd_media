@@ -6,6 +6,7 @@ import requests
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
 import time # Import time untuk timestamp
+import io
 
 from face_preprocessing import detect_and_crop
 # Import fungsi yang diperbarui dari face_data
