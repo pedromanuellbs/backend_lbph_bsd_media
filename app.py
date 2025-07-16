@@ -18,6 +18,7 @@ from face_data import update_lbph_model_incrementally, train_and_evaluate_full_d
 
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke file config Anda
 from PIL import Image
+from model_utils import update_lbph_model_incrementally
 
 
 if "GOOGLE_APPLICATION_CREDENTIALS_JSON" in os.environ:
@@ -138,6 +139,24 @@ def save_face_image(user_id: str, image_file) -> str:
         print(f"ERROR: Gagal menyimpan gambar ke {dst}: {e}")
         traceback.print_exc()
         return None
+    
+    # Fungsi untuk memastikan model ada di lokal, jika tidak, download dari cloud storage
+def ensure_model_local(user_id):
+    model_path = f"trained_models/{user_id}_lbph.yml"
+    label_map_path = f"trained_models/{user_id}_labels.npy"
+    # Download jika belum ada
+    if not os.path.exists(model_path):
+        try:
+            from your_upload_module import download_from_firebase  # Ganti dengan modulmu
+            download_from_firebase(user_id, f"{user_id}_lbph.yml", model_path)
+        except Exception as e:
+            print(f"ERROR: Gagal download model: {e}")
+    if not os.path.exists(label_map_path):
+        try:
+            from your_upload_module import download_from_firebase
+            download_from_firebase(user_id, f"{user_id}_labels.npy", label_map_path)
+        except Exception as e:
+            print(f"ERROR: Gagal download label map: {e}")
 
 @app.route("/", methods=["GET"])
 def home():
@@ -146,54 +165,26 @@ def home():
 
 @app.route('/find-face-users', methods=['POST'])
 def find_face_users():
-    log_event("Received /find-face-users request")
     if 'image' not in request.files:
-        log_event("ERROR: Tidak ada field 'image' dalam request.files")
         return jsonify({'success': False, 'error': 'image wajib'}), 400
 
     file = request.files['image']
-    log_event(f"INFO: Nama file image yang diterima: {file.filename}")
-
     if not allowed_file(file.filename):
-        log_event(f"ERROR: Ekstensi file '{file.filename}' tidak diperbolehkan")
         return jsonify({'success': False, 'error': 'Ekstensi file tidak diperbolehkan'}), 400
 
-    # Logging ukuran file
-    try:
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell()
-        file.seek(0)
-        log_event(f"INFO: Ukuran file yang diterima: {file_size} bytes")
-    except Exception as e:
-        log_event(f"WARNING: Tidak bisa cek ukuran file: {e}")
-
-    # Simpan file untuk debug jika diperlukan
-    try:
-        in_mem_bytes = file.read()
-        debug_path = f"/tmp/debug_{file.filename}"
-        with open(debug_path, "wb") as f:
-            f.write(in_mem_bytes)
-        log_event(f"INFO: File image disimpan sementara di {debug_path}")
-        in_mem_file = io.BytesIO(in_mem_bytes)
-    except Exception as e:
-        log_event(f"ERROR: Gagal menyimpan file image untuk debug: {e}")
-        return jsonify({'success': False, 'error': 'Gagal menyimpan gambar'}), 400
+    in_mem_bytes = file.read()
+    in_mem_file = io.BytesIO(in_mem_bytes)
 
     # Proses gambar input dengan MTCNN
     try:
         pil_image = Image.open(in_mem_file).convert('RGB')
-        log_event("INFO: Image berhasil dibuka dan dikonversi ke RGB.")
         boxes, _ = mtcnn.detect(pil_image)
         if boxes is None or len(boxes) == 0:
-            log_event("ERROR: Wajah tidak terdeteksi dengan MTCNN")
             return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
-        log_event(f"INFO: Jumlah wajah terdeteksi pada gambar input (MTCNN): {len(boxes)}")
         x1, y1, x2, y2 = [int(v) for v in boxes[0]]
         input_face_roi = pil_image.crop((x1, y1, x2, y2)).resize((100, 100)).convert('L')
         img = np.array(input_face_roi)
-        log_event(f"INFO: ROI wajah input berhasil diambil dan di-resize ke shape: {img.shape}")
-    except Exception as e:
-        log_event(f"ERROR: Gagal deteksi/konversi gambar dengan MTCNN: {e}")
+    except Exception:
         return jsonify({'success': False, 'error': 'Gagal membaca gambar'}), 400
 
     # Ambil semua folder email di face-dataset/
@@ -206,32 +197,26 @@ def find_face_users():
     for page in blobs.pages:
         for prefix in page.prefixes:
             user_folders.add(prefix)
-    log_event(f"INFO: Ditemukan {len(user_folders)} folder user di face-dataset.")
 
-    # Loop ke setiap user/email
     for user_folder in user_folders:
         user_id = user_folder.split('/')[-2]
-        model_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_lbph.yml')
-        label_map_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_labels.npy')
-        log_event(f"INFO: Memeriksa model dan label map untuk user: {user_id}")
+        # Pastikan model & label map ada di lokal, download jika belum
+        ensure_model_local(user_id)
+        model_path = f"trained_models/{user_id}_lbph.yml"
+        label_map_path = f"trained_models/{user_id}_labels.npy"
 
         if not os.path.exists(model_path) or not os.path.exists(label_map_path):
-            log_event(f"WARNING: Model atau label map tidak ditemukan untuk user: {user_id}. Skip user ini.")
             continue
 
         model = cv2.face.LBPHFaceRecognizer_create()
         model.read(model_path)
         label_map = np.load(label_map_path, allow_pickle=True).item()
-        log_event(f"INFO: Model dan label map berhasil dimuat untuk user: {user_id}")
 
         # Loop semua foto di folder user ini
         blobs_foto = bucket.list_blobs(prefix=user_folder)
-        foto_ke = 0
         for blob in blobs_foto:
             if not (blob.name.lower().endswith('.jpg') or blob.name.lower().endswith('.jpeg') or blob.name.lower().endswith('.png')):
                 continue
-            foto_ke += 1
-            log_event(f"INFO: Memproses foto ke-{foto_ke} di user {user_id}: {blob.name}")
             try:
                 img_bytes = blob.download_as_bytes()
                 pil_photo = Image.open(io.BytesIO(img_bytes)).convert('L')
@@ -239,40 +224,32 @@ def find_face_users():
                 # Deteksi wajah di foto dataset dengan Haar Cascade
                 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
                 faces_in_photo = face_cascade.detectMultiScale(np_photo, scaleFactor=1.1, minNeighbors=3)
-                log_event(f"INFO: Jumlah wajah terdeteksi pada foto dataset: {len(faces_in_photo)}")
                 for (x2, y2, w2, h2) in faces_in_photo:
                     face_roi = cv2.resize(np_photo[y2:y2+h2, x2:x2+w2], (100, 100))
                     try:
                         label, conf = model.predict(img)
-                        log_event(f"INFO: Predict result: label={label}, conf={conf}, user_id={user_id}")
                         if str(label_map.get(label)) == user_id and conf < LBPH_CONFIDENCE_THRESHOLD:
-                            log_event(f"SUCCESS: Wajah cocok ditemukan pada user: {user_id}, foto: {blob.name}")
                             matched = True
                             matched_photo = blob.public_url
                             matched_user_id = user_id
                             break
-                    except Exception as e:
-                        log_event(f"ERROR: Gagal predict foto: {e}")
+                    except Exception:
                         continue
                 if matched:
                     break
-            except Exception as e:
-                log_event(f"ERROR: Gagal download/olah foto dari storage: {e}")
+            except Exception:
                 continue
         if matched:
             break
 
     if matched:
-        log_event(f"SUCCESS: Pencocokan sukses untuk user: {matched_user_id}, foto: {matched_photo}")
         return jsonify({
             'success': True,
             'matched_user_id': matched_user_id,
             'matched_photo': matched_photo
         }), 200
     else:
-        log_event("INFO: Tidak ada wajah cocok ditemukan di seluruh dataset.")
         return jsonify({'success': False, 'error': 'Wajah tidak cocok dengan data mana pun'}), 401
-
 
 @app.route('/login-face', methods=['POST'])
 def login_face():
