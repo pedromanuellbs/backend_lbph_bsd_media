@@ -1,26 +1,37 @@
 print("=== DEBUG: Ini app.py terbaru versi 2025-07-17 ===")
 
 import os
-import json
+import sys
 import traceback
-import tempfile
-import numpy as np
-import requests
-import cv2
-from flask import Flask, request, jsonify, send_from_directory
-import time # Import time untuk timestamp
 
-from face_preprocessing import detect_and_crop
-# Import fungsi yang diperbarui dari face_data
-from face_data import update_lbph_model_incrementally, load_model_and_labels
+try:
+    import json
+    import tempfile
+    import numpy as np
+    import requests
+    import cv2
+    from flask import Flask, request, jsonify, send_from_directory
+    import time # Import time untuk timestamp
 
-from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke file config Anda
+    from face_preprocessing import detect_and_crop
+    # Import fungsi yang diperbarui dari face_data
+    from face_data import update_lbph_model_incrementally, load_model_and_labels
 
-# --- Import dan setup Firebase Admin SDK ---
-import firebase_admin
-from firebase_admin import credentials, storage
+    from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke file config Anda
 
-from gdrive_match import find_matching_photos, find_all_matching_photos, get_all_gdrive_folder_ids
+    # --- Import dan setup Firebase Admin SDK ---
+    import firebase_admin
+    from firebase_admin import credentials, storage
+
+    from gdrive_match import find_matching_photos, find_all_matching_photos, get_all_gdrive_folder_ids
+
+except Exception as e:
+    print("===== ERROR SAAT IMPORT =====")
+    traceback.print_exc()
+    sys.exit(1)
+
+
+
 
 if not firebase_admin._apps:
     try:
@@ -52,7 +63,7 @@ def upload_to_firebase(local_file, user_id, filename):
 app = Flask(__name__)
 
 
-print(app.url_map)
+
 
 @app.route('/face_login', methods=['POST'])
 def face_login():
@@ -399,6 +410,9 @@ def debug_ls():
     result['model_path_exists'] = os.path.exists(MODEL_PATH)
     result['label_map_path_exists'] = os.path.exists(LABEL_MAP)
     return jsonify(result)
+
+
+print(app.url_map)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8000))
