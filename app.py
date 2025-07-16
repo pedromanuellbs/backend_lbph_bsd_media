@@ -24,7 +24,7 @@ from gdrive_match import find_matching_photos, find_all_matching_photos, get_all
 
 if not firebase_admin._apps:
     try:
-        # Asumsi GOOGLE_APPLICATION_CREDENTIALS_JSON diset sebagai variabel lingkungan di Railway
+        # Asumsi GOOGLE_APPLICATION_CREDENTIALS_JSON diset sebagai env variable
         cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
         cred = credentials.Certificate(cred_info)
         firebase_admin.initialize_app(cred, {
@@ -36,7 +36,9 @@ if not firebase_admin._apps:
         print("Firebase Admin SDK will not be initialized. Check your Railway environment variables.")
     except Exception as e:
         print(f"ERROR initializing Firebase Admin SDK: {e}")
-        traceback.print_exc()
+
+# Sekarang, storage.bucket() baru boleh dipanggil:
+bucket = storage.bucket()
 
 # Fungsi helper untuk upload file ke Firebase Storage
 def upload_to_firebase(local_file, user_id, filename):
@@ -49,13 +51,6 @@ def upload_to_firebase(local_file, user_id, filename):
 
 app = Flask(__name__)
 
-# Inisialisasi Firebase Admin SDK hanya sekali
-firebase_cred_path = './serviceaccountkey.json'  # Pastikan file ini ada di Railway
-if not len(storage._apps):
-    cred = credentials.Certificate(firebase_cred_path)
-    initialize_app(cred, {
-        'storageBucket': 'db-ta-bsd-media.firebasestorage.app'
-    })
 
 face_bp = Blueprint('face', __name__)
 
