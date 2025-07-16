@@ -1,10 +1,13 @@
 import os
 import json
 import traceback
+import face_recognition
+import tempfile
 import numpy as np
 import requests
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
+from flask import Blueprint
 import time # Import time untuk timestamp
 
 from face_preprocessing import detect_and_crop
@@ -15,7 +18,7 @@ from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke f
 
 # --- Import dan setup Firebase Admin SDK ---
 import firebase_admin
-from firebase_admin import credentials, storage, firestore
+from firebase_admin import credentials, storage, firestore, initialize_app
 
 from gdrive_match import find_matching_photos, find_all_matching_photos, get_all_gdrive_folder_ids
 
@@ -45,6 +48,66 @@ def upload_to_firebase(local_file, user_id, filename):
     return blob.public_url
 
 app = Flask(__name__)
+
+# Inisialisasi Firebase Admin SDK hanya sekali
+firebase_cred_path = './serviceaccountkey.json'  # Pastikan file ini ada di Railway
+if not len(storage._apps):
+    cred = credentials.Certificate(firebase_cred_path)
+    initialize_app(cred, {
+        'storageBucket': 'db-ta-bsd-media.firebasestorage.app'
+    })
+
+face_bp = Blueprint('face', __name__)
+
+
+@face_bp.route('/find-face-users', methods=['POST'])
+def find_face_users():
+    user_id = request.form.get('user_id')  # email klien
+    image_file = request.files.get('image')
+
+    if not user_id or not image_file:
+        return jsonify({'error': 'user_id dan image wajib diisi'}), 400
+
+    # Simpan foto user login sementara
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_img:
+        image_file.save(temp_img.name)
+        temp_img_path = temp_img.name
+
+    # Ekstrak encoding dari foto user login
+    query_image = face_recognition.load_image_file(temp_img_path)
+    query_encodings = face_recognition.face_encodings(query_image)
+    os.remove(temp_img_path)
+    if not query_encodings:
+        return jsonify({'error': 'Wajah tidak terdeteksi di foto.'}), 400
+    query_encoding = query_encodings[0]
+
+    # Ambil seluruh foto dari folder email klien di Firebase Storage
+    bucket = storage.bucket()
+    prefix = f'face-dataset/{user_id}/'
+    blobs = list(bucket.list_blobs(prefix=prefix))
+    matches = []
+    for blob in blobs:
+        if blob.name.lower().endswith(('.jpg', '.jpeg', '.png')):
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_db_img:
+                blob.download_to_filename(temp_db_img.name)
+                db_image = face_recognition.load_image_file(temp_db_img.name)
+                db_encodings = face_recognition.face_encodings(db_image)
+                os.remove(temp_db_img.name)
+                if db_encodings:
+                    match_result = face_recognition.compare_faces([db_encodings[0]], query_encoding, tolerance=0.5)
+                    if match_result[0]:
+                        matches.append(blob.name)
+
+    if not matches:
+        return jsonify({'status': 'not_found', 'message': 'Wajah tidak cocok di database.'}), 404
+
+    return jsonify({
+        'status': 'success',
+        'matches': matches
+    }), 200
+
+# Registrasi blueprint
+app.register_blueprint(face_bp)
 
 # ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
