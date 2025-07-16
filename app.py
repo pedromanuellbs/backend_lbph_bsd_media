@@ -268,7 +268,7 @@ def login_face():
     pil_image = Image.open(in_mem_file).convert('L')
     img = np.array(pil_image)
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    faces = face_cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5)
+    faces = face_cascade.detectMultiScale(img, scaleFactor=1.05, minNeighbors=3)
 
     if len(faces) == 0:
         return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
