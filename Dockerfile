@@ -21,20 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir \
-    Flask==2.2.5 \
-    gunicorn==22.0.0 \
-    gevent==22.10.2 \
-    requests==2.31.0 \
-    firebase-admin==6.4.0 \
-    google-api-python-client==2.128.0 \
-    numpy==1.24.4 \
-    Pillow==10.2.0 \
-    torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu \
-    torchvision==0.17.2+cpu --index-url https://download.pytorch.org/whl/cpu \
-    opencv-contrib-python \
-    facenet-pytorch==2.6.0 \
-    scikit-learn==1.1.3
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 

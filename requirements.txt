@@ -1,17 +1,10 @@
 Flask==2.2.5
-# UBAH INI:
-opencv-contrib-python # Ganti dari opencv-python
-# ATAU coba tanpa versi untuk mengambil yang terbaru:
-# opencv-contrib-python
-
+opencv-contrib-python
 numpy==1.26.4
 Pillow==10.2.0
-
-torch==1.13.1+cpu --index-url https://download.pytorch.org/whl/cpu
-torchvision==0.14.1+cpu --index-url https://download.pytorch.org/whl/cpu
-
+torch==2.2.2+cpu
+torchvision==0.17.2+cpu
 facenet-pytorch==2.5.2
-
 scikit-learn==1.4.1
 requests==2.31.0
 gunicorn==22.0.0
