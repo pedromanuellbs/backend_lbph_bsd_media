@@ -132,55 +132,63 @@ def home():
 
 @app.route('/face_login', methods=['POST'])
 def face_login():
-    print("REQUEST MASUK KE /face_login")
-    
+    # Jangan ubah bagian ini
     claimed_username = request.form.get('user_id')
     image_file = request.files.get('image')
+    print(f"REQUEST MASUK KE /face_login UNTUK USER: {claimed_username}")
 
     if not claimed_username or not image_file:
         return jsonify({'error': 'user_id dan image wajib diisi'}), 400
-
-    if global_recognizer is None or global_labels_reverse is None:
-        return jsonify({'error': 'Server model is not ready, please try again later.'}), 503
+    if global_recognizer is None:
+        return jsonify({'error': 'Server model is not ready'}), 503
+    # --- Akhir bagian yang tidak diubah ---
 
     try:
+        print("LOGIN_DEBUG: 1. Mulai memproses gambar.")
         in_memory_file = np.fromstring(image_file.read(), np.uint8)
         img = cv2.imdecode(in_memory_file, cv2.IMREAD_COLOR)
         if img is None:
-            return jsonify({'error': 'Format gambar tidak valid atau korup.'}), 400
+            return jsonify({'error': 'Format gambar tidak valid'}), 400
 
+        print("LOGIN_DEBUG: 2. Konversi ke grayscale.")
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        print("LOGIN_DEBUG: 3. Memuat cascade classifier.")
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        
+        print("LOGIN_DEBUG: 4. Menjalankan deteksi wajah (detectMultiScale).")
         faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(100, 100))
 
         if len(faces) == 0:
+            print("LOGIN_DEBUG: 5a. Tidak ada wajah terdeteksi.")
             return jsonify({'status': 'not_found', 'message': 'Wajah tidak terdeteksi di foto.'}), 400
 
+        print(f"LOGIN_DEBUG: 5b. Wajah terdeteksi ({len(faces)} buah). Memulai prediksi...")
         (x, y, w, h) = faces[0]
         roi_gray = gray[y:y+h, x:x+w]
         
+        # Ini adalah baris yang paling dicurigai menyebabkan crash atau timeout
         predicted_id, confidence = global_recognizer.predict(roi_gray)
-        print(f"DEBUG: Claimed User: {claimed_username}, Predicted ID: {predicted_id}, Confidence: {confidence}")
-
+        
+        print(f"LOGIN_DEBUG: 6. Prediksi SELESAI! Hasil id={predicted_id}, conf={confidence}")
+        
+        # --- Lanjutan logika verifikasi ---
         if confidence < 60 and predicted_id in global_labels_reverse:
             recognized_username = global_labels_reverse[predicted_id]
-            print(f"DEBUG: Recognized User: {recognized_username}")
-
             if recognized_username == claimed_username:
-                return jsonify({
-                    'status': 'success',
-                    'message': 'Login berhasil!',
-                    'user': {'username': recognized_username, 'confidence': float(confidence)}
-                }), 200
+                print("LOGIN_DEBUG: 7a. Verifikasi SUKSES.")
+                return jsonify({'status': 'success', 'message': 'Login berhasil!'}), 200
             else:
-                return jsonify({'status': 'match_failed', 'message': 'Wajah Anda tidak cocok dengan username yang dimasukkan.'}), 403
+                print("LOGIN_DEBUG: 7b. Verifikasi GAGAL, wajah tidak cocok dengan user.")
+                return jsonify({'status': 'match_failed', 'message': 'Wajah tidak cocok dengan username.'}), 403
         else:
-            return jsonify({'status': 'not_found', 'message': 'Wajah tidak dikenali. Silakan daftar terlebih dahulu.'}), 404
+            print("LOGIN_DEBUG: 7c. Verifikasi GAGAL, wajah tidak dikenali.")
+            return jsonify({'status': 'not_found', 'message': 'Wajah tidak dikenali.'}), 404
 
     except Exception as e:
-        print(f"ERROR saat face_login: {e}")
+        print(f"LOGIN_DEBUG: Exception tertangkap! Error: {e}")
         traceback.print_exc()
-        return jsonify({'error': 'Terjadi kesalahan internal saat memproses gambar.'}), 500
+        return jsonify({'error': 'Terjadi kesalahan internal.'}), 500
 
 
 def save_face_image(user_id: str, image_file) -> str:
