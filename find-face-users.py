@@ -8,7 +8,6 @@ from firebase_admin import credentials, firestore, initialize_app, storage as fb
 from werkzeug.utils import secure_filename
 from PIL import Image
 
-# Inisialisasi Flask dan Firebase Admin
 app = Flask(__name__)
 
 # Ambil credentials dari ENV Railway
@@ -22,19 +21,14 @@ initialize_app(cred, {'storageBucket': 'db-ta-bsd-media.appspot.com'})
 db = firestore.client()
 bucket = fb_storage.bucket()
 
-# Folder hasil training dataset wajah client (misal: 'trained_models')
 TRAINED_MODELS_DIR = 'trained_models'
+LBPH_CONFIDENCE_THRESHOLD = 60  # Bisa diubah sesuai kebutuhan
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'jpg', 'jpeg', 'png'}
 
 @app.route('/find-face-users', methods=['POST'])
 def find_face_users():
-    """
-    Cari foto user client yang cocok di database
-    - Input: image (file, wajib), user_id (str, wajib)
-    - Output: Daftar URL foto yang cocok (dari Firestore/Cloud Storage)
-    """
     if 'image' not in request.files or 'user_id' not in request.form:
         return jsonify({'success': False, 'error': 'image dan user_id wajib'}), 400
 
@@ -44,7 +38,6 @@ def find_face_users():
     if not allowed_file(file.filename):
         return jsonify({'success': False, 'error': 'Ekstensi file tidak diperbolehkan'}), 400
 
-    # Load model LBPH hasil register (misal: trained_models/<user_id>_lbph.yml)
     model_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_lbph.yml')
     if not os.path.exists(model_path):
         return jsonify({'success': False, 'error': 'Model wajah user tidak ditemukan'}), 404
@@ -52,16 +45,14 @@ def find_face_users():
     model = cv2.face.LBPHFaceRecognizer_create()
     model.read(model_path)
 
-    # Load label map (mapping label ke user_id, misal: trained_models/<user_id>_labels.npy)
     label_map_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_labels.npy')
     if not os.path.exists(label_map_path):
         return jsonify({'success': False, 'error': 'Label map user tidak ditemukan'}), 404
 
     label_map = np.load(label_map_path, allow_pickle=True).item()
 
-    # Proses gambar input
     in_mem_file = io.BytesIO(file.read())
-    pil_image = Image.open(in_mem_file).convert('L')  # grayscale
+    pil_image = Image.open(in_mem_file).convert('L')
     img = np.array(pil_image)
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
     faces = face_cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5)
@@ -71,7 +62,6 @@ def find_face_users():
 
     matched_photos = []
 
-    # Ambil daftar foto milik user client dari Firestore (atau dari Storage)
     photos_ref = db.collection('photos').where('owner_id', '==', user_id)
     photo_docs = photos_ref.stream()
 
@@ -82,7 +72,6 @@ def find_face_users():
         if not photo_url or not storage_path:
             continue
 
-        # Download foto dari Storage untuk verifikasi
         try:
             blob = bucket.blob(storage_path)
             img_bytes = blob.download_as_bytes()
@@ -93,15 +82,17 @@ def find_face_users():
                 face_roi = np_photo[y:y+h, x:x+w]
                 try:
                     label, conf = model.predict(cv2.resize(face_roi, (img.shape[1], img.shape[0])))
-                    if label_map.get(label) == user_id and conf < 60:  # threshold bisa diatur
+                    if label_map.get(label) == user_id and conf < LBPH_CONFIDENCE_THRESHOLD:
                         matched_photos.append(photo_url)
                         break
-                except Exception:
+                except Exception as e:
+                    print(f'Gagal predict foto: {e}')
                     continue
-        except Exception:
+        except Exception as e:
+            print(f'Gagal download/olah foto dari storage: {e}')
             continue
 
     return jsonify({'success': True, 'matched_photos': matched_photos}), 200
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
