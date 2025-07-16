@@ -54,6 +54,7 @@ app = Flask(__name__)
 
 
 face_bp = Blueprint('face', __name__)
+app.register_blueprint(face_bp)
 
 
 @face_bp.route('/face-login', methods=['POST'])
