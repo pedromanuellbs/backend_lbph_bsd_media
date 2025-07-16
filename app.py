@@ -1,3 +1,5 @@
+print("=== DEBUG: Ini app.py terbaru versi 2025-07-17 ===")
+
 import os
 import json
 import traceback
