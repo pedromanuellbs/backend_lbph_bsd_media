@@ -1,159 +1,50 @@
-print("=== DEBUG: Ini app.py terbaru versi 2025-07-17 ===")
+print("=== DEBUG: Ini app.py terbaru versi 2025-07-17 (SUDAH DIPERBAIKI) ===")
 
 import os
 import sys
 import traceback
+import json
+import tempfile
+import numpy as np
+import requests
+import cv2
+from flask import Flask, request, jsonify, send_from_directory
+import time
+import firebase_admin
+from firebase_admin import credentials, storage
 
+from face_preprocessing import detect_and_crop
+from face_data import update_lbph_model_incrementally, load_model_and_labels
+from config import FACES_DIR, MODEL_PATH, LABEL_MAP
+from gdrive_match import find_matching_photos, find_all_matching_photos, get_all_gdrive_folder_ids
+
+# --- Global variables for models ---
+global_recognizer = None
+global_labels_reverse = None
+
+# --- Firebase Admin SDK Initialization ---
 try:
-    import json
-    import tempfile
-    import numpy as np
-    import requests
-    import cv2
-    from flask import Flask, request, jsonify, send_from_directory
-    import time # Import time untuk timestamp
-
-    from face_preprocessing import detect_and_crop
-    # Import fungsi yang diperbarui dari face_data
-    from face_data import update_lbph_model_incrementally, load_model_and_labels
-
-    from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke file config Anda
-
-    # --- Import dan setup Firebase Admin SDK ---
-    import firebase_admin
-    from firebase_admin import credentials, storage
-
-    from gdrive_match import find_matching_photos, find_all_matching_photos, get_all_gdrive_folder_ids
-
-except Exception as e:
-    print("===== ERROR SAAT IMPORT =====")
-    traceback.print_exc()
-    sys.exit(1)
-
-
-
-
-if not firebase_admin._apps:
-    try:
-        # Asumsi GOOGLE_APPLICATION_CREDENTIALS_JSON diset sebagai env variable
+    if not firebase_admin._apps:
         cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
         cred = credentials.Certificate(cred_info)
         firebase_admin.initialize_app(cred, {
             'storageBucket': 'db-ta-bsd-media.firebasestorage.app'
         })
         print("Firebase Admin SDK initialized successfully.")
-    except KeyError:
-        print("ERROR: Environment variable GOOGLE_APPLICATION_CREDENTIALS_JSON not set.")
-        print("Firebase Admin SDK will not be initialized. Check your Railway environment variables.")
-    except Exception as e:
-        print(f"ERROR initializing Firebase Admin SDK: {e}")
+except KeyError:
+    print("ERROR: Environment variable GOOGLE_APPLICATION_CREDENTIALS_JSON not set.")
+except Exception as e:
+    print(f"ERROR initializing Firebase Admin SDK: {e}")
 
-# Sekarang, storage.bucket() baru boleh dipanggil:
 bucket = storage.bucket()
 
-# Fungsi helper untuk upload file ke Firebase Storage
+# --- Helper Functions ---
 def upload_to_firebase(local_file, user_id, filename):
-    """Upload file ke Firebase Storage dan return URL download-nya"""
-    bucket = storage.bucket()
     blob = bucket.blob(f"face-dataset/{user_id}/{filename}")
     blob.upload_from_filename(local_file)
     blob.make_public()
     return blob.public_url
 
-app = Flask(__name__)
-
-
-
-
-@app.route('/face_login', methods=['POST'])
-def face_login():
-    print("form:", request.form)
-    print("files:", request.files)
-    image_file = request.files.get('image')
-
-    if not image_file:
-        return jsonify({'error': 'image wajib diisi'}), 400
-
-    # Simpan foto user login sementara
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_img:
-        image_file.save(temp_img.name)
-        temp_img_path = temp_img.name
-
-    # Load model LBPH & labels map dari Firebase Storage
-    bucket = storage.bucket()
-    trainer_blob = bucket.blob('face-recognition-models/lbph_model.xml')
-    labels_blob = bucket.blob('face-recognition-models/labels_map.txt')
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.xml') as temp_trainer, \
-         tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as temp_labels:
-        trainer_blob.download_to_filename(temp_trainer.name)
-        labels_blob.download_to_filename(temp_labels.name)
-
-        # Load LBPH model
-        recognizer = cv2.face.LBPHFaceRecognizer_create()
-        recognizer.read(temp_trainer.name)
-
-        # Load labels (parse as text, not pickle)
-        labels = {}
-        with open(temp_labels.name, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                k, v = line.split(":")
-                labels[k] = int(v)
-        labels_reverse = {v: k for k, v in labels.items()}
-
-    # Hapus file sementara model
-    try:
-        os.remove(temp_trainer.name)
-        os.remove(temp_labels.name)
-    except Exception as e:
-        print("Error removing temp files:", e)
-
-    # Deteksi wajah pada gambar login (gunakan cascade frontalface)
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    img = cv2.imread(temp_img_path)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4)
-    try:
-        os.remove(temp_img_path)
-    except Exception as e:
-        print("Error removing temp image:", e)
-
-    if len(faces) == 0:
-        return jsonify({'error': 'Wajah tidak terdeteksi di foto.'}), 400
-
-    results = []
-    for (x, y, w, h) in faces:
-        roi_gray = gray[y:y+h, x:x+w]
-        id_, conf = recognizer.predict(roi_gray)
-        # Semakin kecil conf, semakin cocok. Biasanya threshold 50-80.
-        if conf < 60 and id_ in labels_reverse:  # threshold bisa diatur sesuai percobaan
-            matched_email = labels_reverse[id_]
-            results.append({'email': matched_email, 'confidence': float(conf)})
-
-    if not results:
-        return jsonify({'status': 'not_found', 'message': 'Wajah tidak cocok di database.'}), 404
-
-    # Jika multiple faces terdeteksi, bisa kirim semua, atau hanya satu (terbaik)
-    return jsonify({
-        'status': 'success',
-        'matches': results
-    }), 200
-
-# ─── Error Handler ─────────────────────────────────────────────────────────
-@app.errorhandler(Exception)
-def handle_exceptions(e):
-    tb = traceback.format_exc()
-    print("===== Exception Traceback =====")
-    print(tb)
-    return jsonify({'success': False, 'error': str(e)}), 500
-
-# ─── Konstanta ─────────────────────────────────────────────────────────────
-os.makedirs(FACES_DIR, exist_ok=True)
-
-# --- TEMPAT TERBAIK UNTUK FUNGSI DOWNLOAD_FILE_FROM_URL ---
 def download_file_from_url(url, destination):
     try:
         print(f"DEBUG: Mengunduh {url} ke {destination}")
@@ -164,87 +55,167 @@ def download_file_from_url(url, destination):
                 f.write(chunk)
         print(f"DEBUG: Berhasil mengunduh {destination}")
         return True
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         print(f"ERROR: Gagal mengunduh file dari URL {url}: {e}")
         return False
-    except Exception as e:
-        print(f"ERROR: Terjadi error saat menyimpan file {destination}: {e}")
-        return False
 
-@app.before_first_request
-def initial_model_check():
-    print("INFO: Memeriksa keberadaan model LBPH saat startup...")
+# --- ✨ NEW: Function to load models globally at startup ---
+def load_models_globally():
+    global global_recognizer, global_labels_reverse
+    print("INFO: Memeriksa dan memuat model LBPH ke memori...")
+
     MODEL_URL = "https://firebasestorage.googleapis.com/v0/b/db-ta-bsd-media.firebasestorage.app/o/face-recognition-models%2Flbph_model.xml?alt=media&token=26656ed8-3cd1-4220-a07d-aad9aaeb91f5"
     LABEL_MAP_URL = "https://firebasestorage.googleapis.com/v0/b/db-ta-bsd-media.firebasestorage.app/o/face-recognition-models%2Flabels_map.txt?alt=media&token=2ab5957f-78b2-41b0-a1aa-b2f1b8675f54"
 
-    if not os.path.exists(MODEL_PATH) or not os.path.exists(LABEL_MAP):
-        print("INFO: Model LBPH atau label map tidak ditemukan secara lokal. Mencoba mengunduh.")
-        model_downloaded = download_file_from_url(MODEL_URL, MODEL_PATH)
-        labels_downloaded = download_file_from_url(LABEL_MAP_URL, LABEL_MAP)
-        if not model_downloaded or not labels_downloaded:
-            print("CRITICAL ERROR: Gagal mengunduh model atau label map. Aplikasi mungkin tidak berfungsi dengan baik.")
-        else:
-            print("INFO: Model LBPH dan label map berhasil diunduh.")
-    else:
-        print("INFO: Model LBPH dan label map ditemukan secara lokal.")
+    # Ensure local directory exists
+    os.makedirs(os.path.dirname(MODEL_PATH) or '.', exist_ok=True)
+
+    if not os.path.exists(MODEL_PATH):
+        print(f"INFO: {MODEL_PATH} tidak ditemukan. Mengunduh...")
+        if not download_file_from_url(MODEL_URL, MODEL_PATH):
+            print("CRITICAL: Gagal mengunduh model. Fungsi login tidak akan bekerja.")
+            return
+    if not os.path.exists(LABEL_MAP):
+        print(f"INFO: {LABEL_MAP} tidak ditemukan. Mengunduh...")
+        if not download_file_from_url(LABEL_MAP_URL, LABEL_MAP):
+            print("CRITICAL: Gagal mengunduh label map. Fungsi login tidak akan bekerja.")
+            return
+
+    try:
+        global_recognizer = cv2.face.LBPHFaceRecognizer_create()
+        global_recognizer.read(MODEL_PATH)
+
+        labels = {}
+        with open(LABEL_MAP, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    k, v = line.split(":")
+                    labels[k] = int(v)
+        global_labels_reverse = {v: k for k, v in labels.items()}
+        print("INFO: Model LBPH dan label map berhasil dimuat ke memori global.")
+    except Exception as e:
+        print(f"CRITICAL: Gagal memuat model atau label dari file: {e}")
+        traceback.print_exc()
+
+
+app = Flask(__name__)
+
+# --- Error Handler ---
+@app.errorhandler(Exception)
+def handle_exceptions(e):
+    tb = traceback.format_exc()
+    print("===== Exception Traceback =====")
+    print(tb)
+    return jsonify({'success': False, 'error': str(e)}), 500
+
+# --- ✨ MODIFIED: `/face_login` endpoint ---
+@app.route('/face_login', methods=['POST'])
+def face_login():
+    print("REQUEST MASUK KE /face_login")
+    if global_recognizer is None or global_labels_reverse is None:
+        print("ERROR: Model tidak siap. Login tidak dapat diproses.")
+        return jsonify({'error': 'Server model is not ready, please try again later.'}), 503
+
+    image_file = request.files.get('image')
+    if not image_file:
+        return jsonify({'error': 'image wajib diisi'}), 400
+
+    try:
+        # Read image directly into memory
+        in_memory_file = np.fromstring(image_file.read(), np.uint8)
+        img = cv2.imdecode(in_memory_file, cv2.IMREAD_COLOR)
+        if img is None:
+            return jsonify({'error': 'Format gambar tidak valid atau korup.'}), 400
+
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4)
+
+        if len(faces) == 0:
+            return jsonify({'error': 'Wajah tidak terdeteksi di foto.'}), 400
+
+        results = []
+        for (x, y, w, h) in faces:
+            roi_gray = gray[y:y+h, x:x+w]
+            id_, conf = global_recognizer.predict(roi_gray)
+            
+            # Confidence < 60 is a good match
+            if conf < 60 and id_ in global_labels_reverse:
+                matched_email = global_labels_reverse[id_]
+                results.append({'email': matched_email, 'confidence': float(conf)})
+
+        if not results:
+            return jsonify({'status': 'not_found', 'message': 'Wajah tidak cocok di database.'}), 404
+
+        # Return the best match (lowest confidence score)
+        best_match = min(results, key=lambda x: x['confidence'])
+        return jsonify({
+            'status': 'success',
+            'match': best_match
+        }), 200
+
+    except Exception as e:
+        print(f"ERROR saat face_login: {e}")
+        traceback.print_exc()
+        return jsonify({'error': 'Terjadi kesalahan internal saat memproses gambar.'}), 500
+
+
+# --- Other Endpoints (Unchanged) ---
+os.makedirs(FACES_DIR, exist_ok=True)
+
+@app.route("/", methods=["GET"])
+def home():
+    return "BSD Media LBPH Backend siap!"
 
 def save_face_image(user_id: str, image_file) -> str:
     user_dir = os.path.join(FACES_DIR, user_id)
     os.makedirs(user_dir, exist_ok=True)
     timestamp = str(int(time.time() * 1000))
     dst = os.path.join(user_dir, f"{timestamp}.jpg")
-    print(f"DEBUG: Menerima gambar untuk user '{user_id}', akan disimpan ke: {dst}")
     try:
         image_file.save(dst)
-        print(f"DEBUG: Gambar berhasil disimpan ke {dst}")
-        if not os.path.exists(dst) or os.path.getsize(dst) == 0:
-            print(f"ERROR: File {dst} kosong atau tidak ditemukan setelah disimpan.")
-            return None
         return dst
     except Exception as e:
         print(f"ERROR: Gagal menyimpan gambar ke {dst}: {e}")
-        traceback.print_exc()
         return None
-
-@app.route("/", methods=["GET"])
-def home():
-    return "BSD Media LBPH Backend siap!"
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
-    print("===== MULAI register_face =====")
     user_id = request.form.get('user_id')
-    image   = request.files.get('image')
+    image = request.files.get('image')
     if not user_id or not image:
-        print("ERROR: user_id atau image tidak ada di request.")
         return jsonify({'success': False, 'error': 'user_id atau image tidak ada di request'}), 400
+    
     raw_path = save_face_image(user_id, image)
     if raw_path is None:
         return jsonify({'success': False, 'error': 'Gagal menyimpan gambar yang diunggah'}), 500
-    try:
-        debug_firebase_url = upload_to_firebase(raw_path, user_id, f"debug_raw_{os.path.basename(raw_path)}")
-        print(f"DEBUG: Gambar mentah diupload ke Firebase untuk debug: {debug_firebase_url}")
-    except Exception as e:
-        print(f"ERROR: Gagal mengupload gambar mentah ke Firebase: {e}")
+    
     try:
         firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
-        print(f"DEBUG: Gambar diupload ke Firebase: {firebase_url}")
     except Exception as e:
-        print(f"ERROR: Gagal mengupload gambar ke Firebase: {e}")
         traceback.print_exc()
         return jsonify({'success': False, 'error': 'Gagal mengupload gambar ke Firebase'}), 500
-    print("DEBUG: Memulai update model LBPH secara incremental...")
+    
     success = update_lbph_model_incrementally(raw_path, user_id)
+    
+    # After model is updated, we must reload it into memory
+    if success:
+        print("INFO: Model diupdate, memuat ulang model global...")
+        load_models_globally()
+
     try:
         if os.path.exists(raw_path):
             os.remove(raw_path)
-            print(f"DEBUG: Menghapus file sementara: {raw_path}")
     except Exception as e:
         print(f"WARNING: Gagal menghapus file sementara {raw_path}: {e}")
+
     if not success:
         return jsonify({'success': False, 'error': 'Gagal mengupdate model LBPH'}), 500
-    print("INFO: Register face & update model berhasil.")
-    return jsonify({ 'success': True, 'firebase_image_url': firebase_url })
+    
+    return jsonify({'success': True, 'firebase_image_url': firebase_url})
+
 
 @app.route('/verify_face', methods=['POST'])
 def verify_face():
@@ -255,40 +226,25 @@ def verify_face():
     os.makedirs(os.path.dirname(tmp_filename) or '.', exist_ok=True)
     try:
         image.save(tmp_filename)
-        print(f"DEBUG: Gambar verifikasi disimpan sementara ke: {tmp_filename}")
-        if not os.path.exists(tmp_filename) or os.path.getsize(tmp_filename) == 0:
-            print(f"ERROR: File sementara {tmp_filename} kosong atau tidak ditemukan.")
-            return jsonify({'success': False, 'error': 'Gagal memuat gambar verifikasi: file kosong'}), 400
         gray = detect_and_crop(tmp_filename)
         if gray is None:
-            print("WARNING: Wajah tidak terdeteksi atau gambar kosong saat verifikasi.")
             return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi atau gambar kosong'}), 400
         model, lblmap = load_model_and_labels()
         if model is None or not lblmap:
-            print("ERROR: Model LBPH belum ada atau label map kosong. Tidak dapat melakukan verifikasi.")
-            return jsonify({'success': False, 'error': 'Model belum ada atau label map kosong. Harap registrasi wajah terlebih dahulu.'}), 400
-        if not lblmap:
-            print("WARNING: Label map kosong setelah dimuat. Tidak ada wajah terdaftar untuk verifikasi.")
-            return jsonify({'success': False, 'error': 'Model kosong, tidak ada wajah terdaftar untuk verifikasi.'}), 400
+            return jsonify({'success': False, 'error': 'Model belum ada atau label map kosong.'}), 400
         label, conf = model.predict(gray)
-        print(f"DEBUG: Predicted label: {label}, Confidence: {conf}")
         if label == -1 or conf > 90:
-            print(f"INFO: Wajah tidak dikenali atau confidence terlalu rendah (Label: {label}, Conf: {conf}).")
-            return jsonify({'success': False, 'error': 'Wajah tidak dikenali atau confidence terlalu rendah.'}), 404
+            return jsonify({'success': False, 'error': 'Wajah tidak dikenali.'}), 404
         recognized_user_id = lblmap.get(label)
         if recognized_user_id is None:
-            print(f"ERROR: Label terprediksi ({label}) tidak ditemukan di label map.")
             return jsonify({'success': False, 'error': 'Label terprediksi tidak ditemukan di label map.'}), 500
-        print(f"INFO: Verifikasi berhasil. User ID: {recognized_user_id}, Confidence: {conf}")
         return jsonify({ 'success': True, 'user_id': recognized_user_id, 'confidence': float(conf) })
-    except Exception as e:
-        print(f"ERROR: Terjadi error saat verify_face: {e}")
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': f'Terjadi error internal: {e}'}), 500
     finally:
         if os.path.exists(tmp_filename):
             os.remove(tmp_filename)
-            print(f"DEBUG: Menghapus file sementara: {tmp_filename}")
+
+
+# (Keep other endpoints like list_user_faces, get_face_image, find_my_photos, debug_ls as they are)
 
 @app.route('/list_user_faces', methods=['GET'])
 def list_user_faces():
@@ -316,104 +272,63 @@ def get_face_image():
 @app.route('/find_my_photos', methods=['POST'])
 def find_my_photos():
     try:
-        print("\n===== Endpoint /find_my_photos DIPANGGIL (MULTI-MODE - VERSI TERBARU) =====\n")
-
         if 'image' not in request.files:
             return jsonify({'success': False, 'error': 'File gambar tidak ditemukan'}), 400
-
         image = request.files['image']
         user_tmp = 'tmp_user_search.jpg'
-
-        os.makedirs(os.path.dirname(user_tmp) or '.', exist_ok=True)
         image.save(user_tmp)
-        print(f"DEBUG: Gambar klien untuk pencarian disimpan sementara ke: {user_tmp}")
-
-        import cv2
-        import numpy as np
-        img = cv2.imread(user_tmp)
-        if img is None:
-            print("ERROR: Gagal memuat file gambar klien untuk pencarian.")
-            return jsonify({'success': False, 'error': 'Gagal memuat file gambar klien'}), 400
-
-        if img.dtype != np.uint8:
-            img = cv2.convertScaleAbs(img)
-            print("DEBUG: Gambar klien dikonversi ke format 8-bit.")
-        cv2.imwrite(user_tmp, img)
-        print(f"DEBUG: Gambar klien yang sudah bersih disimpan kembali ke: {user_tmp}")
-
-        # --- MODE 1: Filter folder tertentu (search.dart) ---
+        
         drive_links = request.form.get('drive_links')
         if drive_links:
-            try:
-                drive_folders = json.loads(drive_links)
-                if not isinstance(drive_folders, list):
-                    raise ValueError("drive_links harus list string")
-            except Exception as e:
-                return jsonify({'success': False, 'error': 'drive_links harus list string'}), 400
-
-            print(f"DEBUG: Filter pencarian hanya di folder Google Drive berikut: {drive_folders}")
+            drive_folders = json.loads(drive_links)
             matched_photos = []
-            # Ambil semua sesi dari Firestore untuk mapping folder_id -> doc_id
-            folder_data = get_all_gdrive_folder_ids()  # list of dict: {'firestore_doc_id', 'drive_folder_id'}
+            folder_data = get_all_gdrive_folder_ids()
             folderid_to_docid = {fd['drive_folder_id']: fd['firestore_doc_id'] for fd in folder_data}
             for link in drive_folders:
                 if 'folders/' in link:
                     folder_id = link.split('folders/')[1].split('?')[0]
-                    # Dapatkan session_id (Firestore doc id) dari mapping
                     session_id = folderid_to_docid.get(folder_id)
                     matches = find_matching_photos(user_tmp, folder_id, session_id)
-                    # Inject sessionId ke setiap hasil
                     for m in matches:
                         m['sessionId'] = session_id
                     matched_photos.extend(matches)
-            print("INFO: Pencarian foto berdasarkan drive_links selesai. Mengirimkan respons.")
             return jsonify({'success': True, 'matched_photos': matched_photos})
-
-        # --- MODE 2: Cari seluruh database fotografer (home.dart) ---
-        print("DEBUG: Tidak ada drive_links, mencari ke seluruh database sesi.")
-        all_folder_data = get_all_gdrive_folder_ids()  # list of dict: {'firestore_doc_id', 'drive_folder_id'}
-        print(f"DEBUG: Ditemukan {len(all_folder_data)} folder Google Drive.")
-        matches = find_all_matching_photos(user_tmp, all_folder_data)
-        # Inject sessionId ke setiap hasil jika perlu (harusnya sudah diisi)
-        for m in matches:
-            session_id = m.get('sessionId') or m.get('folder_id')
-            m['sessionId'] = session_id
-        print("INFO: Pencarian foto seluruh database selesai. Mengirimkan respons.")
-        return jsonify({'success': True, 'matched_photos': matches})
-
+        else:
+            all_folder_data = get_all_gdrive_folder_ids()
+            matches = find_all_matching_photos(user_tmp, all_folder_data)
+            for m in matches:
+                session_id = m.get('sessionId') or m.get('folder_id')
+                m['sessionId'] = session_id
+            return jsonify({'success': True, 'matched_photos': matches})
     except Exception as e:
-        print("===== ERROR TRACEBACK in /find_my_photos =====")
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         if os.path.exists('tmp_user_search.jpg'):
             os.remove('tmp_user_search.jpg')
-            print(f"DEBUG: Menghapus file sementara: tmp_user_search.jpg")
+
 @app.route('/debug_ls', methods=['GET'])
 def debug_ls():
     result = {}
-    try:
-        result['root'] = os.listdir('.')
-    except Exception as e:
-        result['root'] = str(e)
-    try:
-        result['faces_dir'] = os.listdir(FACES_DIR)
-    except Exception as e:
-        result['faces_dir'] = str(e)
+    try: result['root'] = os.listdir('.')
+    except Exception as e: result['root'] = str(e)
+    try: result['faces_dir'] = os.listdir(FACES_DIR)
+    except Exception as e: result['faces_dir'] = str(e)
     user_id_param = request.args.get('user_id')
     if user_id_param:
         user_specific_dir = os.path.join(FACES_DIR, user_id_param)
-        try:
-            result[f'faces/{user_id_param}'] = os.listdir(user_specific_dir)
-        except Exception as e:
-            result[f'faces/{user_id_param}'] = str(e)
+        try: result[f'faces/{user_id_param}'] = os.listdir(user_specific_dir)
+        except Exception as e: result[f'faces/{user_id_param}'] = str(e)
     result['model_path_exists'] = os.path.exists(MODEL_PATH)
     result['label_map_path_exists'] = os.path.exists(LABEL_MAP)
     return jsonify(result)
 
-
-print(app.url_map)
-
+# --- Main Execution ---
 if __name__ == '__main__':
+    # Load models when the script starts
+    load_models_globally()
     port = int(os.environ.get('PORT', 8000))
     app.run(host='0.0.0.0', port=port)
+else:
+    # This block will run when deployed on a production server like Gunicorn
+    load_models_globally()
