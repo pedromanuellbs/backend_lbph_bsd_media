@@ -46,6 +46,9 @@ def upload_to_firebase(local_file, user_id, filename):
 
 app = Flask(__name__)
 
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'jpg', 'jpeg', 'png'}
+
 # ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
 def handle_exceptions(e):
@@ -183,7 +186,7 @@ def find_face_users():
 
     print(f"Matched photos: {matched_photos}")
     return jsonify({'success': True, 'matched_photos': matched_photos}), 200
-    
+
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
