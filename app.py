@@ -134,6 +134,7 @@ def home():
     return "BSD Media LBPH Backend siap!"
 
 @app.route('/register_face', methods=['POST'])
+def register_face():@app.route('/register_face', methods=['POST'])
 def register_face():
     print("===== MULAI register_face =====")
     user_id = request.form.get('user_id')
@@ -141,14 +142,17 @@ def register_face():
     if not user_id or not image:
         print("ERROR: user_id atau image tidak ada di request.")
         return jsonify({'success': False, 'error': 'user_id atau image tidak ada di request'}), 400
+
     raw_path = save_face_image(user_id, image)
     if raw_path is None:
         return jsonify({'success': False, 'error': 'Gagal menyimpan gambar yang diunggah'}), 500
+
     try:
         debug_firebase_url = upload_to_firebase(raw_path, user_id, f"debug_raw_{os.path.basename(raw_path)}")
         print(f"DEBUG: Gambar mentah diupload ke Firebase untuk debug: {debug_firebase_url}")
     except Exception as e:
         print(f"ERROR: Gagal mengupload gambar mentah ke Firebase: {e}")
+
     try:
         firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
         print(f"DEBUG: Gambar diupload ke Firebase: {firebase_url}")
@@ -156,16 +160,37 @@ def register_face():
         print(f"ERROR: Gagal mengupload gambar ke Firebase: {e}")
         traceback.print_exc()
         return jsonify({'success': False, 'error': 'Gagal mengupload gambar ke Firebase'}), 500
+
     print("DEBUG: Memulai update model LBPH secara incremental...")
-    success = update_lbph_model_incrementally(raw_path, user_id)
+    success, model, label_map = update_lbph_model_incrementally(raw_path, user_id, return_model=True)
+    user_dir = os.path.join(FACES_DIR, user_id)
+
+    # Simpan model dan label map ke folder user
+    try:
+        lbph_model_path = os.path.join(user_dir, "lbph_model.xml")
+        labels_map_path = os.path.join(user_dir, "labels_map.txt")
+        model.save(lbph_model_path)
+        with open(labels_map_path, "w") as f:
+            f.write(json.dumps(label_map))
+        print(f"DEBUG: Model dan label map berhasil disimpan ke {user_dir}")
+
+        # Upload ke Firebase Storage per user
+        upload_to_firebase(lbph_model_path, user_id, "lbph_model.xml")
+        upload_to_firebase(labels_map_path, user_id, "labels_map.txt")
+        print("DEBUG: Model dan label map diupload ke Firebase Storage.")
+    except Exception as e:
+        print(f"ERROR: Gagal simpan/upload lbph_model.xml atau labels_map.txt: {e}")
+
     try:
         if os.path.exists(raw_path):
             os.remove(raw_path)
             print(f"DEBUG: Menghapus file sementara: {raw_path}")
     except Exception as e:
         print(f"WARNING: Gagal menghapus file sementara {raw_path}: {e}")
+
     if not success:
         return jsonify({'success': False, 'error': 'Gagal mengupdate model LBPH'}), 500
+
     print("INFO: Register face & update model berhasil.")
     return jsonify({ 'success': True, 'firebase_image_url': firebase_url })
 
