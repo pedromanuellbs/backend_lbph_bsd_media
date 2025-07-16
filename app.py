@@ -25,10 +25,10 @@ if "GOOGLE_APPLICATION_CREDENTIALS_JSON" in os.environ:
     with open(cred_path, "w") as f:
         f.write(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
-    
+
 from google.cloud import storage
 storage_client = storage.Client()
-bucket = storage_client.bucket('db-ta-bsd-media.appspot.com')  # Ganti dengan nama bucket aslimu
+bucket = storage_client.bucket('db-ta-bsd-media.firebasestorage.app')  # Ganti dengan nama bucket aslimu
 
 # --- Import dan setup Firebase Admin SDK ---
 import firebase_admin
