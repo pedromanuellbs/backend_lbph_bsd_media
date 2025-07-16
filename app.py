@@ -57,52 +57,10 @@ face_bp = Blueprint('face', __name__)
 
 @face_bp.route('/find-face-users', methods=['POST'])
 def find_face_users():
+    # Alias ke verify_face agar frontend tetap kompatibel
+    return verify_face()
 
-    print("form:", request.form)
-    print("files:", request.files)
-    user_id = request.form.get('user_id')  # email klien
-    image_file = request.files.get('image')
 
-    if not user_id or not image_file:
-        return jsonify({'error': 'user_id dan image wajib diisi'}), 400
-
-    # Simpan foto user login sementara
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_img:
-        image_file.save(temp_img.name)
-        temp_img_path = temp_img.name
-
-    # Ekstrak encoding dari foto user login
-    query_image = face_recognition.load_image_file(temp_img_path)
-    query_encodings = face_recognition.face_encodings(query_image)
-    os.remove(temp_img_path)
-    if not query_encodings:
-        return jsonify({'error': 'Wajah tidak terdeteksi di foto.'}), 400
-    query_encoding = query_encodings[0]
-
-    # Ambil seluruh foto dari folder email klien di Firebase Storage
-    bucket = storage.bucket()
-    prefix = f'face-dataset/{user_id}/'
-    blobs = list(bucket.list_blobs(prefix=prefix))
-    matches = []
-    for blob in blobs:
-        if blob.name.lower().endswith(('.jpg', '.jpeg', '.png')):
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_db_img:
-                blob.download_to_filename(temp_db_img.name)
-                db_image = face_recognition.load_image_file(temp_db_img.name)
-                db_encodings = face_recognition.face_encodings(db_image)
-                os.remove(temp_db_img.name)
-                if db_encodings:
-                    match_result = face_recognition.compare_faces([db_encodings[0]], query_encoding, tolerance=0.5)
-                    if match_result[0]:
-                        matches.append(blob.name)
-
-    if not matches:
-        return jsonify({'status': 'not_found', 'message': 'Wajah tidak cocok di database.'}), 404
-
-    return jsonify({
-        'status': 'success',
-        'matches': matches
-    }), 200
 
 # Registrasi blueprint
 app.register_blueprint(face_bp)
