@@ -19,6 +19,17 @@ from face_data import update_lbph_model_incrementally, train_and_evaluate_full_d
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke file config Anda
 from PIL import Image
 
+
+if "GOOGLE_APPLICATION_CREDENTIALS_JSON" in os.environ:
+    cred_path = "/tmp/google-credentials.json"
+    with open(cred_path, "w") as f:
+        f.write(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
+    
+from google.cloud import storage
+storage_client = storage.Client()
+bucket = storage_client.bucket('db-ta-bsd-media.appspot.com')  # Ganti dengan nama bucket aslimu
+
 # --- Import dan setup Firebase Admin SDK ---
 import firebase_admin
 from firebase_admin import credentials, storage, firestore
