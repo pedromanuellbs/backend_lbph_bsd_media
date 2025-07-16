@@ -60,6 +60,11 @@ RUN pip install --no-cache-dir \
 # Tahap 6: Instal Facenet-PyTorch (boleh tetap, versi boleh satu saja)
 RUN pip install --no-cache-dir facenet-pytorch==2.6.0
 
+# ===============================
+# Tambahkan hanya ini:
+RUN pip install --no-cache-dir mtcnn
+# ===============================
+
 # Salin semua file kode aplikasi Anda ke dalam container
 COPY . .
 
