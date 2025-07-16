@@ -116,49 +116,67 @@ def handle_exceptions(e):
 # --- ✨ MODIFIED: `/face_login` endpoint ---
 @app.route('/face_login', methods=['POST'])
 def face_login():
-    print("REQUEST MASUK KE /face_login")
+    print("REQUEST MASUK KE /face_login (LOGIKA BARU)")
+    
+    # Ambil username dan gambar dari request
+    claimed_username = request.form.get('user_id')
+    image_file = request.files.get('image')
+
+    # Validasi input
+    if not claimed_username or not image_file:
+        return jsonify({'error': 'user_id dan image wajib diisi'}), 400
+
+    # Pastikan model sudah siap di memori
     if global_recognizer is None or global_labels_reverse is None:
         print("ERROR: Model tidak siap. Login tidak dapat diproses.")
         return jsonify({'error': 'Server model is not ready, please try again later.'}), 503
 
-    image_file = request.files.get('image')
-    if not image_file:
-        return jsonify({'error': 'image wajib diisi'}), 400
-
     try:
-        # Read image directly into memory
+        # Baca gambar langsung dari memori
         in_memory_file = np.fromstring(image_file.read(), np.uint8)
         img = cv2.imdecode(in_memory_file, cv2.IMREAD_COLOR)
         if img is None:
             return jsonify({'error': 'Format gambar tidak valid atau korup.'}), 400
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4)
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(100, 100))
 
         if len(faces) == 0:
-            return jsonify({'error': 'Wajah tidak terdeteksi di foto.'}), 400
+            return jsonify({'status': 'not_found', 'message': 'Wajah tidak terdeteksi di foto.'}), 400
 
-        results = []
-        for (x, y, w, h) in faces:
-            roi_gray = gray[y:y+h, x:x+w]
-            id_, conf = global_recognizer.predict(roi_gray)
-            
-            # Confidence < 60 is a good match
-            if conf < 60 and id_ in global_labels_reverse:
-                matched_email = global_labels_reverse[id_]
-                results.append({'email': matched_email, 'confidence': float(conf)})
+        # Hanya proses wajah pertama yang terdeteksi untuk login
+        (x, y, w, h) = faces[0]
+        roi_gray = gray[y:y+h, x:x+w]
+        
+        # Prediksi wajah menggunakan model
+        predicted_id, confidence = global_recognizer.predict(roi_gray)
 
-        if not results:
-            return jsonify({'status': 'not_found', 'message': 'Wajah tidak cocok di database.'}), 404
+        print(f"DEBUG: Claimed User: {claimed_username}, Predicted ID: {predicted_id}, Confidence: {confidence}")
 
-        # Return the best match (lowest confidence score)
-        best_match = min(results, key=lambda x: x['confidence'])
-        return jsonify({
-            'status': 'success',
-            'match': best_match
-        }), 200
+        # Verifikasi hasil prediksi
+        # Confidence < 60 dianggap cocok
+        if confidence < 60 and predicted_id in global_labels_reverse:
+            recognized_username = global_labels_reverse[predicted_id]
+            print(f"DEBUG: Recognized User: {recognized_username}")
+
+            # INI BAGIAN KUNCINYA: Bandingkan hasil prediksi dengan username yang dikirim
+            if recognized_username == claimed_username:
+                # Jika cocok, login berhasil
+                return jsonify({
+                    'status': 'success',
+                    'message': 'Login berhasil!',
+                    'user': {
+                        'username': recognized_username,
+                        'confidence': float(confidence)
+                    }
+                }), 200
+            else:
+                # Wajah dikenali sebagai orang lain
+                return jsonify({'status': 'match_failed', 'message': 'Wajah Anda tidak cocok dengan username yang dimasukkan.'}), 403
+        else:
+            # Wajah tidak dikenali di database
+            return jsonify({'status': 'not_found', 'message': 'Wajah tidak dikenali. Silakan daftar terlebih dahulu.'}), 404
 
     except Exception as e:
         print(f"ERROR saat face_login: {e}")
