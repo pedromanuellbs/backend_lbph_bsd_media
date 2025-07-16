@@ -8,6 +8,9 @@ from flask import Flask, request, jsonify, send_from_directory
 import time # Import time untuk timestamp
 import io
 
+from facenet_pytorch import MTCNN
+import torch
+
 from face_preprocessing import detect_and_crop
 # Import fungsi yang diperbarui dari face_data
 from face_data import update_lbph_model_incrementally, train_and_evaluate_full_dataset, load_model_and_labels
@@ -136,27 +139,22 @@ def find_face_users():
         print(f"[ERROR] Ekstensi file '{file.filename}' tidak diperbolehkan")
         return jsonify({'success': False, 'error': 'Ekstensi file tidak diperbolehkan'}), 400
 
-    # Proses gambar input
+    # Proses gambar input dengan MTCNN
     in_mem_file = io.BytesIO(file.read())
     print("[INFO] Membaca image dari memory file.")
     try:
-        pil_image = Image.open(in_mem_file).convert('L')
-        img = np.array(pil_image)
-        print(f"[INFO] Image berhasil dikonversi ke array dengan shape: {img.shape}")
+        pil_image = Image.open(in_mem_file).convert('RGB')
+        boxes, _ = mtcnn.detect(pil_image)
+        if boxes is None or len(boxes) == 0:
+            print("[ERROR] Wajah tidak terdeteksi dengan MTCNN")
+            return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
+        print(f"[INFO] Jumlah wajah terdeteksi pada gambar input (MTCNN): {len(boxes)}")
+        x1, y1, x2, y2 = [int(v) for v in boxes[0]]
+        input_face_roi = pil_image.crop((x1, y1, x2, y2)).resize((100, 100)).convert('L')
+        img = np.array(input_face_roi)
     except Exception as e:
-        print(f"[ERROR] Gagal membaca/konversi gambar: {e}")
+        print(f"[ERROR] Gagal deteksi/konversi gambar dengan MTCNN: {e}")
         return jsonify({'success': False, 'error': 'Gagal membaca gambar'}), 400
-
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    faces = face_cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5)
-    print(f"[INFO] Jumlah wajah terdeteksi pada gambar input: {len(faces)}")
-    if len(faces) == 0:
-        print("[ERROR] Wajah tidak terdeteksi pada gambar input.")
-        return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
-
-    (x, y, w, h) = faces[0]
-    input_face_roi = cv2.resize(img[y:y+h, x:x+w], (100, 100))
-    print("[INFO] ROI wajah input berhasil diambil dan di-resize.")
 
     # Ambil semua folder email di face-dataset/
     matched = None
@@ -198,12 +196,15 @@ def find_face_users():
                 img_bytes = blob.download_as_bytes()
                 pil_photo = Image.open(io.BytesIO(img_bytes)).convert('L')
                 np_photo = np.array(pil_photo)
+                # Deteksi wajah di foto dataset dengan MTCNN juga (opsional, bisa tetap Haar Cascade jika mau)
+                # Gunakan Haar Cascade jika model sudah ready, atau MTCNN jika ingin konsisten
+                face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
                 faces_in_photo = face_cascade.detectMultiScale(np_photo, scaleFactor=1.1, minNeighbors=3)
                 print(f"[INFO] Jumlah wajah terdeteksi pada foto dataset: {len(faces_in_photo)}")
                 for (x2, y2, w2, h2) in faces_in_photo:
                     face_roi = cv2.resize(np_photo[y2:y2+h2, x2:x2+w2], (100, 100))
                     try:
-                        label, conf = model.predict(input_face_roi)
+                        label, conf = model.predict(img)
                         print(f"[INFO] Predict result: label={label}, conf={conf}, user_id={user_id}")
                         if str(label_map.get(label)) == user_id and conf < LBPH_CONFIDENCE_THRESHOLD:
                             print(f"[SUCCESS] Wajah cocok ditemukan pada user: {user_id}, foto: {blob.name}")
