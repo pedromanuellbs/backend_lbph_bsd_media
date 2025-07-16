@@ -8,7 +8,6 @@ import numpy as np
 import requests
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
-from flask import Blueprint
 import time # Import time untuk timestamp
 
 from face_preprocessing import detect_and_crop
@@ -53,11 +52,9 @@ def upload_to_firebase(local_file, user_id, filename):
 app = Flask(__name__)
 
 
-face_bp = Blueprint('face', __name__)
-app.register_blueprint(face_bp)
+print(app.url_map)
 
-
-@face_bp.route('/face_login', methods=['POST'])
+@app.route('/face_login', methods=['POST'])
 def face_login():
     print("form:", request.form)
     print("files:", request.files)
@@ -133,8 +130,6 @@ def face_login():
         'status': 'success',
         'matches': results
     }), 200
-# Jangan lupa registrasi blueprint di app utama
-# app.register_blueprint(face_bp)
 
 # ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
@@ -406,4 +401,5 @@ def debug_ls():
     return jsonify(result)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+    port = int(os.environ.get('PORT', 8000))
+    app.run(host='0.0.0.0', port=port)
