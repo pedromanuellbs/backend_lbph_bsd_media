@@ -6,29 +6,12 @@ import requests
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
 import time # Import time untuk timestamp
-import io
-import datetime
-
-from facenet_pytorch import MTCNN
-import torch
 
 from face_preprocessing import detect_and_crop
 # Import fungsi yang diperbarui dari face_data
 from face_data import update_lbph_model_incrementally, train_and_evaluate_full_dataset, load_model_and_labels
 
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke file config Anda
-from PIL import Image
-
-
-if "GOOGLE_APPLICATION_CREDENTIALS_JSON" in os.environ:
-    cred_path = "/tmp/google-credentials.json"
-    with open(cred_path, "w") as f:
-        f.write(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
-
-from google.cloud import storage
-storage_client = storage.Client()
-bucket = storage_client.bucket('db-ta-bsd-media.firebasestorage.app')  # Ganti dengan nama bucket aslimu
 
 # --- Import dan setup Firebase Admin SDK ---
 import firebase_admin
@@ -63,16 +46,6 @@ def upload_to_firebase(local_file, user_id, filename):
 
 app = Flask(__name__)
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-mtcnn = MTCNN(keep_all=True, device=device)
-
-def log_event(message):
-    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    print(f"[{now}] {message}")
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'jpg', 'jpeg', 'png'}
-
 # ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
 def handle_exceptions(e):
@@ -83,8 +56,6 @@ def handle_exceptions(e):
 
 # ─── Konstanta ─────────────────────────────────────────────────────────────
 os.makedirs(FACES_DIR, exist_ok=True)
-TRAINED_MODELS_DIR = 'models'
-LBPH_CONFIDENCE_THRESHOLD = 60  # sesuaikan jika perlu
 
 # --- TEMPAT TERBAIK UNTUK FUNGSI DOWNLOAD_FILE_FROM_URL ---
 def download_file_from_url(url, destination):
@@ -138,165 +109,10 @@ def save_face_image(user_id: str, image_file) -> str:
         print(f"ERROR: Gagal menyimpan gambar ke {dst}: {e}")
         traceback.print_exc()
         return None
-    
-    # Fungsi untuk memastikan model ada di lokal, jika tidak, download dari cloud storage
-def ensure_model_local(user_id):
-    model_path = f"trained_models/{user_id}_lbph.yml"
-    label_map_path = f"trained_models/{user_id}_labels.npy"
-    # Download jika belum ada
-    if not os.path.exists(model_path):
-        try:
-            from your_upload_module import download_from_firebase  # Ganti dengan modulmu
-            download_from_firebase(user_id, f"{user_id}_lbph.yml", model_path)
-        except Exception as e:
-            print(f"ERROR: Gagal download model: {e}")
-    if not os.path.exists(label_map_path):
-        try:
-            from your_upload_module import download_from_firebase
-            download_from_firebase(user_id, f"{user_id}_labels.npy", label_map_path)
-        except Exception as e:
-            print(f"ERROR: Gagal download label map: {e}")
 
 @app.route("/", methods=["GET"])
 def home():
     return "BSD Media LBPH Backend siap!"
-
-
-@app.route('/find-face-users', methods=['POST'])
-def find_face_users():
-    if 'image' not in request.files:
-        return jsonify({'success': False, 'error': 'image wajib'}), 400
-
-    file = request.files['image']
-    if not allowed_file(file.filename):
-        return jsonify({'success': False, 'error': 'Ekstensi file tidak diperbolehkan'}), 400
-
-    in_mem_bytes = file.read()
-    in_mem_file = io.BytesIO(in_mem_bytes)
-
-    # Proses gambar input dengan Haar Cascade (agar konsisten dengan update model)
-    try:
-        pil_image = Image.open(in_mem_file).convert('L')
-        np_img = np.array(pil_image)
-        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-        faces = face_cascade.detectMultiScale(np_img, scaleFactor=1.1, minNeighbors=5)
-        if len(faces) == 0:
-            return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
-        x, y, w, h = faces[0]
-        input_face_roi = pil_image.crop((x, y, x + w, y + h)).resize((100, 100))
-        img = np.array(input_face_roi)
-    except Exception:
-        return jsonify({'success': False, 'error': 'Gagal membaca gambar'}), 400
-
-    # Loop semua folder user di face-dataset/ lokal
-    DATASET_BASE = "face-dataset"
-    MODELS_BASE = "trained_models"
-
-    matched = None
-    matched_photo = None
-    matched_user_id = None
-
-    for user_id in os.listdir(DATASET_BASE):
-        user_folder = os.path.join(DATASET_BASE, user_id)
-        if not os.path.isdir(user_folder):
-            continue
-
-        model_path = os.path.join(MODELS_BASE, f"{user_id}_lbph.yml")
-        label_map_path = os.path.join(MODELS_BASE, f"{user_id}_labels.npy")
-        if not os.path.exists(model_path) or not os.path.exists(label_map_path):
-            continue
-
-        model = cv2.face.LBPHFaceRecognizer_create()
-        model.read(model_path)
-        label_map = np.load(label_map_path, allow_pickle=True).item()
-
-        # Loop semua foto user di folder lokal
-        for foto_name in os.listdir(user_folder):
-            if not (foto_name.lower().endswith('.jpg') or foto_name.lower().endswith('.jpeg') or foto_name.lower().endswith('.png')):
-                continue
-            foto_path = os.path.join(user_folder, foto_name)
-            try:
-                pil_photo = Image.open(foto_path).convert('L')
-                np_photo = np.array(pil_photo)
-                # Deteksi wajah di foto dataset
-                faces_in_photo = face_cascade.detectMultiScale(np_photo, scaleFactor=1.1, minNeighbors=3)
-                for (x2, y2, w2, h2) in faces_in_photo:
-                    face_roi = cv2.resize(np_photo[y2:y2+h2, x2:x2+w2], (100, 100))
-                    try:
-                        label, conf = model.predict(img)
-                        if str(label_map.get(label)) == user_id and conf < LBPH_CONFIDENCE_THRESHOLD:
-                            matched = True
-                            matched_photo = foto_path  # Atau bisa diubah ke URL jika pakai web server file
-                            matched_user_id = user_id
-                            break
-                    except Exception:
-                        continue
-                if matched:
-                    break
-            except Exception:
-                continue
-        if matched:
-            break
-
-    if matched:
-        return jsonify({
-            'success': True,
-            'matched_user_id': matched_user_id,
-            'matched_photo': matched_photo
-        }), 200
-    else:
-        return jsonify({'success': False, 'error': 'Wajah tidak cocok dengan data mana pun'}), 401
-
-@app.route('/login-face', methods=['POST'])
-def login_face():
-    if 'image' not in request.files or 'username' not in request.form:
-        return jsonify({'success': False, 'error': 'image dan username wajib'}), 400
-
-    file = request.files['image']
-    username = request.form['username']
-
-    if not allowed_file(file.filename):
-        return jsonify({'success': False, 'error': 'Ekstensi file tidak diperbolehkan'}), 400
-
-    # 1. Cari user_id berdasarkan username
-    user_query = db.collection('users').where('username', '==', username).limit(1).get()
-    if not user_query:
-        return jsonify({'success': False, 'error': 'Username tidak ditemukan'}), 404
-
-    user_doc = user_query[0]
-    user_id = str(user_doc.id)  # Atau gunakan field lain jika user_id bukan document ID
-
-    # 2. Load model dan label map milik user_id tsb
-    model_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_lbph.yml')
-    label_map_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_labels.npy')
-    if not os.path.exists(model_path) or not os.path.exists(label_map_path):
-        return jsonify({'success': False, 'error': 'Model atau label user tidak ditemukan'}), 404
-
-    model = cv2.face.LBPHFaceRecognizer_create()
-    model.read(model_path)
-    label_map = np.load(label_map_path, allow_pickle=True).item()
-
-    # 3. Proses gambar dari user
-    in_mem_file = io.BytesIO(file.read())
-    pil_image = Image.open(in_mem_file).convert('L')
-    img = np.array(pil_image)
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    faces = face_cascade.detectMultiScale(img, scaleFactor=1.05, minNeighbors=3)
-
-    if len(faces) == 0:
-        return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
-
-    (x, y, w, h) = faces[0]
-    face_roi = cv2.resize(img[y:y+h, x:x+w], (100, 100))
-    try:
-        label, conf = model.predict(face_roi)
-        if str(label_map.get(label)) == user_id and conf < LBPH_CONFIDENCE_THRESHOLD:
-            return jsonify({'success': True, 'message': 'Login face sukses', 'user_id': user_id, 'username': username}), 200
-        else:
-            return jsonify({'success': False, 'error': 'Wajah tidak cocok dengan username ini'}), 401
-    except Exception as e:
-        return jsonify({'success': False, 'error': f'Error prediksi wajah: {str(e)}'}), 500
-
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
