@@ -1,31 +1,30 @@
 import os
+import io
 import json
 import traceback
 import numpy as np
 import requests
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
-import time  # Import time untuk timestamp
+import time
+from werkzeug.utils import secure_filename
+from PIL import Image
 
 from face_preprocessing import detect_and_crop
-# Import fungsi yang diperbarui dari face_data
 from face_data import update_lbph_model_incrementally, train_and_evaluate_full_dataset, load_model_and_labels
+from config import FACES_DIR, MODEL_PATH, LABEL_MAP
+from gdrive_match import find_matching_photos, find_all_matching_photos, get_all_gdrive_folder_ids
 
-from config import FACES_DIR, MODEL_PATH, LABEL_MAP  # Pastikan ini mengarah ke file config Anda
-
-# --- Import dan setup Firebase Admin SDK ---
+# === Firebase Admin SDK Initialization ===
 import firebase_admin
 from firebase_admin import credentials, storage, firestore
 
-from gdrive_match import find_matching_photos, find_all_matching_photos, get_all_gdrive_folder_ids
-
 if not firebase_admin._apps:
     try:
-        # Asumsi GOOGLE_APPLICATION_CREDENTIALS_JSON diset sebagai variabel lingkungan di Railway
         cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
         cred = credentials.Certificate(cred_info)
         firebase_admin.initialize_app(cred, {
-            'storageBucket': 'db-ta-bsd-media.appspot.com'   # <-- GUNAKAN .appspot.com DI SINI!
+            'storageBucket': 'db-ta-bsd-media.appspot.com'
         })
         print("Firebase Admin SDK initialized successfully.")
     except KeyError:
@@ -35,18 +34,17 @@ if not firebase_admin._apps:
         print(f"ERROR initializing Firebase Admin SDK: {e}")
         traceback.print_exc()
 
-# Fungsi helper untuk upload file ke Firebase Storage
-def upload_to_firebase(local_file, user_id, filename):
-    """Upload file ke Firebase Storage dan return URL download-nya"""
-    bucket = storage.bucket()
-    blob = bucket.blob(f"face-dataset/{user_id}/{filename}")
-    blob.upload_from_filename(local_file)
-    blob.make_public()
-    return blob.public_url
+db = firestore.client()
+bucket = storage.bucket()
 
 app = Flask(__name__)
 
-# ─── Error Handler ─────────────────────────────────────────────────────────
+# ==== Konstanta ====
+os.makedirs(FACES_DIR, exist_ok=True)
+TRAINED_MODELS_DIR = 'trained_models'
+LBPH_CONFIDENCE_THRESHOLD = 60  # Bisa diubah sesuai kebutuhan
+
+# ==== Error Handler ====
 @app.errorhandler(Exception)
 def handle_exceptions(e):
     tb = traceback.format_exc()
@@ -54,10 +52,17 @@ def handle_exceptions(e):
     print(tb)
     return jsonify({'success': False, 'error': str(e)}), 500
 
-# ─── Konstanta ─────────────────────────────────────────────────────────────
-os.makedirs(FACES_DIR, exist_ok=True)
+# ==== Helper ====
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'jpg', 'jpeg', 'png'}
 
-# --- TEMPAT TERBAIK UNTUK FUNGSI DOWNLOAD_FILE_FROM_URL ---
+def upload_to_firebase(local_file, user_id, filename):
+    bucket = storage.bucket()
+    blob = bucket.blob(f"face-dataset/{user_id}/{filename}")
+    blob.upload_from_filename(local_file)
+    blob.make_public()
+    return blob.public_url
+
 def download_file_from_url(url, destination):
     try:
         print(f"DEBUG: Mengunduh {url} ke {destination}")
@@ -110,9 +115,77 @@ def save_face_image(user_id: str, image_file) -> str:
         traceback.print_exc()
         return None
 
+# ==== ROUTES ====
 @app.route("/", methods=["GET"])
 def home():
     return "BSD Media LBPH Backend siap!"
+
+@app.route('/find-face-users', methods=['POST'])
+def find_face_users():
+    if 'image' not in request.files or 'user_id' not in request.form:
+        return jsonify({'success': False, 'error': 'image dan user_id wajib'}), 400
+
+    file = request.files['image']
+    user_id = request.form['user_id']
+
+    if not allowed_file(file.filename):
+        return jsonify({'success': False, 'error': 'Ekstensi file tidak diperbolehkan'}), 400
+
+    model_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_lbph.yml')
+    if not os.path.exists(model_path):
+        return jsonify({'success': False, 'error': 'Model wajah user tidak ditemukan'}), 404
+
+    model = cv2.face.LBPHFaceRecognizer_create()
+    model.read(model_path)
+
+    label_map_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_labels.npy')
+    if not os.path.exists(label_map_path):
+        return jsonify({'success': False, 'error': 'Label map user tidak ditemukan'}), 404
+
+    label_map = np.load(label_map_path, allow_pickle=True).item()
+
+    in_mem_file = io.BytesIO(file.read())
+    pil_image = Image.open(in_mem_file).convert('L')
+    img = np.array(pil_image)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    faces = face_cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5)
+
+    if len(faces) == 0:
+        return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
+
+    matched_photos = []
+
+    photos_ref = db.collection('photos').where('owner_id', '==', user_id)
+    photo_docs = photos_ref.stream()
+
+    for photo_doc in photo_docs:
+        photo_data = photo_doc.to_dict()
+        photo_url = photo_data.get('url')
+        storage_path = photo_data.get('storage_path')
+        if not photo_url or not storage_path:
+            continue
+
+        try:
+            blob = bucket.blob(storage_path)
+            img_bytes = blob.download_as_bytes()
+            pil_photo = Image.open(io.BytesIO(img_bytes)).convert('L')
+            np_photo = np.array(pil_photo)
+            faces_in_photo = face_cascade.detectMultiScale(np_photo, scaleFactor=1.1, minNeighbors=5)
+            for (x, y, w, h) in faces_in_photo:
+                face_roi = np_photo[y:y+h, x:x+w]
+                try:
+                    label, conf = model.predict(cv2.resize(face_roi, (img.shape[1], img.shape[0])))
+                    if label_map.get(label) == user_id and conf < LBPH_CONFIDENCE_THRESHOLD:
+                        matched_photos.append(photo_url)
+                        break
+                except Exception as e:
+                    print(f'Gagal predict foto: {e}')
+                    continue
+        except Exception as e:
+            print(f'Gagal download/olah foto dari storage: {e}')
+            continue
+
+    return jsonify({'success': True, 'matched_photos': matched_photos}), 200
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
@@ -221,13 +294,11 @@ def get_face_image():
 def find_my_photos():
     try:
         print("\n===== Endpoint /find_my_photos DIPANGGIL (MULTI-MODE - VERSI TERBARU) =====\n")
-
         if 'image' not in request.files:
             return jsonify({'success': False, 'error': 'File gambar tidak ditemukan'}), 400
 
         image = request.files['image']
         user_tmp = 'tmp_user_search.jpg'
-
         os.makedirs(os.path.dirname(user_tmp) or '.', exist_ok=True)
         image.save(user_tmp)
         print(f"DEBUG: Gambar klien untuk pencarian disimpan sementara ke: {user_tmp}")
@@ -257,16 +328,13 @@ def find_my_photos():
 
             print(f"DEBUG: Filter pencarian hanya di folder Google Drive berikut: {drive_folders}")
             matched_photos = []
-            # Ambil semua sesi dari Firestore untuk mapping folder_id -> doc_id
-            folder_data = get_all_gdrive_folder_ids()  # list of dict: {'firestore_doc_id', 'drive_folder_id'}
+            folder_data = get_all_gdrive_folder_ids()
             folderid_to_docid = {fd['drive_folder_id']: fd['firestore_doc_id'] for fd in folder_data}
             for link in drive_folders:
                 if 'folders/' in link:
                     folder_id = link.split('folders/')[1].split('?')[0]
-                    # Dapatkan session_id (Firestore doc id) dari mapping
                     session_id = folderid_to_docid.get(folder_id)
                     matches = find_matching_photos(user_tmp, folder_id, session_id)
-                    # Inject sessionId ke setiap hasil
                     for m in matches:
                         m['sessionId'] = session_id
                     matched_photos.extend(matches)
@@ -275,10 +343,9 @@ def find_my_photos():
 
         # --- MODE 2: Cari seluruh database fotografer (home.dart) ---
         print("DEBUG: Tidak ada drive_links, mencari ke seluruh database sesi.")
-        all_folder_data = get_all_gdrive_folder_ids()  # list of dict: {'firestore_doc_id', 'drive_folder_id'}
+        all_folder_data = get_all_gdrive_folder_ids()
         print(f"DEBUG: Ditemukan {len(all_folder_data)} folder Google Drive.")
         matches = find_all_matching_photos(user_tmp, all_folder_data)
-        # Inject sessionId ke setiap hasil jika perlu (harusnya sudah diisi)
         for m in matches:
             session_id = m.get('sessionId') or m.get('folder_id')
             m['sessionId'] = session_id
@@ -293,6 +360,7 @@ def find_my_photos():
         if os.path.exists('tmp_user_search.jpg'):
             os.remove('tmp_user_search.jpg')
             print(f"DEBUG: Menghapus file sementara: tmp_user_search.jpg")
+
 @app.route('/debug_ls', methods=['GET'])
 def debug_ls():
     result = {}
@@ -316,4 +384,4 @@ def debug_ls():
     return jsonify(result)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8000)))
