@@ -127,7 +127,7 @@ def find_face_users():
         return jsonify({'success': False, 'error': 'image dan user_id wajib'}), 400
 
     file = request.files['image']
-    user_id = str(request.form['user_id'])
+    user_id = str(request.form['user_id'])  # ini email user, misal: pedromanuellbs574x1@gmail.com
 
     if not allowed_file(file.filename):
         return jsonify({'success': False, 'error': 'Ekstensi file tidak diperbolehkan'}), 400
@@ -143,35 +143,27 @@ def find_face_users():
     model.read(model_path)
     label_map = np.load(label_map_path, allow_pickle=True).item()
 
-    # Baca gambar input
+    # Proses gambar input
     in_mem_file = io.BytesIO(file.read())
     pil_image = Image.open(in_mem_file).convert('L')
     img = np.array(pil_image)
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
     faces = face_cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5)
-
     if len(faces) == 0:
         return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
 
-    # Ambil ROI wajah pertama saja
     (x, y, w, h) = faces[0]
     input_face_roi = cv2.resize(img[y:y+h, x:x+w], (100, 100))
 
     matched_photos = []
 
-    # Query photo dari Firestore
-    photos_ref = db.collection('photos').where('owner_id', '==', user_id)
-    photo_docs = photos_ref.stream()
-
-    for photo_doc in photo_docs:
-        photo_data = photo_doc.to_dict()
-        photo_url = photo_data.get('url')
-        storage_path = photo_data.get('storage_path')
-        if not photo_url or not storage_path:
+    # --- Ambil semua blob di folder face-dataset/{user_id}/ dari Google Cloud Storage ---
+    prefix = f'face-dataset/{user_id}/'
+    blobs = bucket.list_blobs(prefix=prefix)
+    for blob in blobs:
+        if not (blob.name.lower().endswith('.jpg') or blob.name.lower().endswith('.jpeg') or blob.name.lower().endswith('.png')):
             continue
-
         try:
-            blob = bucket.blob(storage_path)
             img_bytes = blob.download_as_bytes()
             pil_photo = Image.open(io.BytesIO(img_bytes)).convert('L')
             np_photo = np.array(pil_photo)
@@ -180,8 +172,8 @@ def find_face_users():
                 face_roi = cv2.resize(np_photo[y2:y2+h2, x2:x2+w2], (100, 100))
                 try:
                     label, conf = model.predict(face_roi)
-                    if str(label_map.get(label)) == str(user_id) and conf < LBPH_CONFIDENCE_THRESHOLD:
-                        matched_photos.append(photo_url)
+                    if str(label_map.get(label)) == user_id and conf < LBPH_CONFIDENCE_THRESHOLD:
+                        matched_photos.append(blob.public_url)  # atau blob.name jika ingin storage path
                         break
                 except Exception as e:
                     print(f'Gagal predict foto: {e}')
@@ -243,7 +235,7 @@ def login_face():
             return jsonify({'success': False, 'error': 'Wajah tidak cocok dengan username ini'}), 401
     except Exception as e:
         return jsonify({'success': False, 'error': f'Error prediksi wajah: {str(e)}'}), 500
-        
+
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
