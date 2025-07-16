@@ -89,9 +89,13 @@ def load_models_globally():
         with open(LABEL_MAP, 'r') as f:
             for line in f:
                 line = line.strip()
-                if line:
-                    k, v = line.split(":")
-                    labels[k] = int(v)
+                if line and ":" in line:
+                    # ✨ PERBAIKAN KUNCI ADA DI SINI
+                    k, v = line.split(":", 1) # k adalah id_angka, v adalah nama
+                    # Simpan dengan format: { 'nama_user': id_angka }
+                    labels[v.strip()] = int(k.strip())
+        
+        # Buat pemetaan sebaliknya: { id_angka: 'nama_user' }
         global_labels_reverse = {v: k for k, v in labels.items()}
         print("INFO: Model LBPH dan label map berhasil dimuat ke memori global.")
     except Exception as e:
