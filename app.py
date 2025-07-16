@@ -18,7 +18,6 @@ from face_data import update_lbph_model_incrementally, train_and_evaluate_full_d
 
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke file config Anda
 from PIL import Image
-from model_utils import update_lbph_model_incrementally
 
 
 if "GOOGLE_APPLICATION_CREDENTIALS_JSON" in os.environ:
@@ -175,36 +174,35 @@ def find_face_users():
     in_mem_bytes = file.read()
     in_mem_file = io.BytesIO(in_mem_bytes)
 
-    # Proses gambar input dengan MTCNN
+    # Proses gambar input dengan Haar Cascade (agar konsisten dengan update model)
     try:
-        pil_image = Image.open(in_mem_file).convert('RGB')
-        boxes, _ = mtcnn.detect(pil_image)
-        if boxes is None or len(boxes) == 0:
+        pil_image = Image.open(in_mem_file).convert('L')
+        np_img = np.array(pil_image)
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        faces = face_cascade.detectMultiScale(np_img, scaleFactor=1.1, minNeighbors=5)
+        if len(faces) == 0:
             return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi'}), 400
-        x1, y1, x2, y2 = [int(v) for v in boxes[0]]
-        input_face_roi = pil_image.crop((x1, y1, x2, y2)).resize((100, 100)).convert('L')
+        x, y, w, h = faces[0]
+        input_face_roi = pil_image.crop((x, y, x + w, y + h)).resize((100, 100))
         img = np.array(input_face_roi)
     except Exception:
         return jsonify({'success': False, 'error': 'Gagal membaca gambar'}), 400
 
-    # Ambil semua folder email di face-dataset/
+    # Loop semua folder user di face-dataset/ lokal
+    DATASET_BASE = "face-dataset"
+    MODELS_BASE = "trained_models"
+
     matched = None
     matched_photo = None
     matched_user_id = None
 
-    blobs = bucket.list_blobs(prefix='face-dataset/', delimiter='/')
-    user_folders = set()
-    for page in blobs.pages:
-        for prefix in page.prefixes:
-            user_folders.add(prefix)
+    for user_id in os.listdir(DATASET_BASE):
+        user_folder = os.path.join(DATASET_BASE, user_id)
+        if not os.path.isdir(user_folder):
+            continue
 
-    for user_folder in user_folders:
-        user_id = user_folder.split('/')[-2]
-        # Pastikan model & label map ada di lokal, download jika belum
-        ensure_model_local(user_id)
-        model_path = f"trained_models/{user_id}_lbph.yml"
-        label_map_path = f"trained_models/{user_id}_labels.npy"
-
+        model_path = os.path.join(MODELS_BASE, f"{user_id}_lbph.yml")
+        label_map_path = os.path.join(MODELS_BASE, f"{user_id}_labels.npy")
         if not os.path.exists(model_path) or not os.path.exists(label_map_path):
             continue
 
@@ -212,17 +210,15 @@ def find_face_users():
         model.read(model_path)
         label_map = np.load(label_map_path, allow_pickle=True).item()
 
-        # Loop semua foto di folder user ini
-        blobs_foto = bucket.list_blobs(prefix=user_folder)
-        for blob in blobs_foto:
-            if not (blob.name.lower().endswith('.jpg') or blob.name.lower().endswith('.jpeg') or blob.name.lower().endswith('.png')):
+        # Loop semua foto user di folder lokal
+        for foto_name in os.listdir(user_folder):
+            if not (foto_name.lower().endswith('.jpg') or foto_name.lower().endswith('.jpeg') or foto_name.lower().endswith('.png')):
                 continue
+            foto_path = os.path.join(user_folder, foto_name)
             try:
-                img_bytes = blob.download_as_bytes()
-                pil_photo = Image.open(io.BytesIO(img_bytes)).convert('L')
+                pil_photo = Image.open(foto_path).convert('L')
                 np_photo = np.array(pil_photo)
-                # Deteksi wajah di foto dataset dengan Haar Cascade
-                face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+                # Deteksi wajah di foto dataset
                 faces_in_photo = face_cascade.detectMultiScale(np_photo, scaleFactor=1.1, minNeighbors=3)
                 for (x2, y2, w2, h2) in faces_in_photo:
                     face_roi = cv2.resize(np_photo[y2:y2+h2, x2:x2+w2], (100, 100))
@@ -230,7 +226,7 @@ def find_face_users():
                         label, conf = model.predict(img)
                         if str(label_map.get(label)) == user_id and conf < LBPH_CONFIDENCE_THRESHOLD:
                             matched = True
-                            matched_photo = blob.public_url
+                            matched_photo = foto_path  # Atau bisa diubah ke URL jika pakai web server file
                             matched_user_id = user_id
                             break
                     except Exception:
