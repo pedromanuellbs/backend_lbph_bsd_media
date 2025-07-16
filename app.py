@@ -123,25 +123,13 @@ def home():
 @app.route('/find-face-users', methods=['POST'])
 def find_face_users():
     print("Received /find-face-users request")
-    if 'image' not in request.files or 'user_id' not in request.form:
-        return jsonify({'success': False, 'error': 'image dan user_id wajib'}), 400
+    if 'image' not in request.files:
+        return jsonify({'success': False, 'error': 'image wajib'}), 400
 
     file = request.files['image']
-    user_id = str(request.form['user_id'])  # ini email user, misal: pedromanuellbs574x1@gmail.com
 
     if not allowed_file(file.filename):
         return jsonify({'success': False, 'error': 'Ekstensi file tidak diperbolehkan'}), 400
-
-    model_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_lbph.yml')
-    label_map_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_labels.npy')
-    if not os.path.exists(model_path):
-        return jsonify({'success': False, 'error': 'Model wajah user tidak ditemukan'}), 404
-    if not os.path.exists(label_map_path):
-        return jsonify({'success': False, 'error': 'Label map user tidak ditemukan'}), 404
-
-    model = cv2.face.LBPHFaceRecognizer_create()
-    model.read(model_path)
-    label_map = np.load(label_map_path, allow_pickle=True).item()
 
     # Proses gambar input
     in_mem_file = io.BytesIO(file.read())
@@ -155,35 +143,68 @@ def find_face_users():
     (x, y, w, h) = faces[0]
     input_face_roi = cv2.resize(img[y:y+h, x:x+w], (100, 100))
 
-    matched_photos = []
+    # Ambil semua folder email di face-dataset/
+    matched = None
+    matched_photo = None
+    matched_user_id = None
 
-    # --- Ambil semua blob di folder face-dataset/{user_id}/ dari Google Cloud Storage ---
-    prefix = f'face-dataset/{user_id}/'
-    blobs = bucket.list_blobs(prefix=prefix)
-    for blob in blobs:
-        if not (blob.name.lower().endswith('.jpg') or blob.name.lower().endswith('.jpeg') or blob.name.lower().endswith('.png')):
-            continue
-        try:
-            img_bytes = blob.download_as_bytes()
-            pil_photo = Image.open(io.BytesIO(img_bytes)).convert('L')
-            np_photo = np.array(pil_photo)
-            faces_in_photo = face_cascade.detectMultiScale(np_photo, scaleFactor=1.1, minNeighbors=5)
-            for (x2, y2, w2, h2) in faces_in_photo:
-                face_roi = cv2.resize(np_photo[y2:y2+h2, x2:x2+w2], (100, 100))
-                try:
-                    label, conf = model.predict(face_roi)
-                    if str(label_map.get(label)) == user_id and conf < LBPH_CONFIDENCE_THRESHOLD:
-                        matched_photos.append(blob.public_url)  # atau blob.name jika ingin storage path
-                        break
-                except Exception as e:
-                    print(f'Gagal predict foto: {e}')
-                    continue
-        except Exception as e:
-            print(f'Gagal download/olah foto dari storage: {e}')
-            continue
+    blobs = bucket.list_blobs(prefix='face-dataset/', delimiter='/')
+    # Dapatkan list semua prefix (folder email) yang ada
+    user_folders = set()
+    for page in blobs.pages:
+        for prefix in page.prefixes:
+            user_folders.add(prefix)  # prefix = 'face-dataset/{email}/'
 
-    print(f"Matched photos: {matched_photos}")
-    return jsonify({'success': True, 'matched_photos': matched_photos}), 200
+    # Loop ke setiap user/email
+    for user_folder in user_folders:
+        user_id = user_folder.split('/')[-2]  # dapatkan nama folder/email
+        model_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_lbph.yml')
+        label_map_path = os.path.join(TRAINED_MODELS_DIR, f'{user_id}_labels.npy')
+        if not os.path.exists(model_path) or not os.path.exists(label_map_path):
+            continue  # skip jika model tidak ada
+
+        model = cv2.face.LBPHFaceRecognizer_create()
+        model.read(model_path)
+        label_map = np.load(label_map_path, allow_pickle=True).item()
+
+        # Loop semua foto di folder user ini
+        blobs_foto = bucket.list_blobs(prefix=user_folder)
+        for blob in blobs_foto:
+            if not (blob.name.lower().endswith('.jpg') or blob.name.lower().endswith('.jpeg') or blob.name.lower().endswith('.png')):
+                continue
+            try:
+                img_bytes = blob.download_as_bytes()
+                pil_photo = Image.open(io.BytesIO(img_bytes)).convert('L')
+                np_photo = np.array(pil_photo)
+                faces_in_photo = face_cascade.detectMultiScale(np_photo, scaleFactor=1.1, minNeighbors=5)
+                for (x2, y2, w2, h2) in faces_in_photo:
+                    face_roi = cv2.resize(np_photo[y2:y2+h2, x2:x2+w2], (100, 100))
+                    try:
+                        label, conf = model.predict(input_face_roi)
+                        if str(label_map.get(label)) == user_id and conf < LBPH_CONFIDENCE_THRESHOLD:
+                            matched = True
+                            matched_photo = blob.public_url
+                            matched_user_id = user_id
+                            break
+                    except Exception as e:
+                        print(f'Gagal predict foto: {e}')
+                        continue
+                if matched:
+                    break
+            except Exception as e:
+                print(f'Gagal download/olah foto dari storage: {e}')
+                continue
+        if matched:
+            break
+
+    if matched:
+        return jsonify({
+            'success': True,
+            'matched_user_id': matched_user_id,
+            'matched_photo': matched_photo
+        }), 200
+    else:
+        return jsonify({'success': False, 'error': 'Wajah tidak cocok dengan data mana pun'}), 401
 
 
 @app.route('/login-face', methods=['POST'])
