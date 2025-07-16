@@ -73,33 +73,45 @@ def face_login():
 
     # Load model LBPH & labels map dari Firebase Storage
     bucket = storage.bucket()
-    trainer_blob = bucket.blob('face-recognition-models/trainer.yml')
-    labels_blob = bucket.blob('face-recognition-models/labels.pickle')
+    trainer_blob = bucket.blob('face-recognition-models/lbph_model.xml')
+    labels_blob = bucket.blob('face-recognition-models/labels_map.txt')
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.yml') as temp_trainer, \
-         tempfile.NamedTemporaryFile(delete=False, suffix='.pickle') as temp_labels:
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.xml') as temp_trainer, \
+         tempfile.NamedTemporaryFile(delete=False, suffix='.txt') as temp_labels:
         trainer_blob.download_to_filename(temp_trainer.name)
         labels_blob.download_to_filename(temp_labels.name)
 
         # Load LBPH model
         recognizer = cv2.face.LBPHFaceRecognizer_create()
         recognizer.read(temp_trainer.name)
-        # Load labels
-        with open(temp_labels.name, 'rb') as f:
-            labels = pickle.load(f)
-        # Reverse labels map: id -> email
+
+        # Load labels (parse as text, not pickle)
+        labels = {}
+        with open(temp_labels.name, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                k, v = line.split(":")
+                labels[k] = int(v)
         labels_reverse = {v: k for k, v in labels.items()}
 
     # Hapus file sementara model
-    os.remove(temp_trainer.name)
-    os.remove(temp_labels.name)
+    try:
+        os.remove(temp_trainer.name)
+        os.remove(temp_labels.name)
+    except Exception as e:
+        print("Error removing temp files:", e)
 
     # Deteksi wajah pada gambar login (gunakan cascade frontalface)
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     img = cv2.imread(temp_img_path)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4)
-    os.remove(temp_img_path)
+    try:
+        os.remove(temp_img_path)
+    except Exception as e:
+        print("Error removing temp image:", e)
 
     if len(faces) == 0:
         return jsonify({'error': 'Wajah tidak terdeteksi di foto.'}), 400
@@ -121,7 +133,6 @@ def face_login():
         'status': 'success',
         'matches': results
     }), 200
-
 # Jangan lupa registrasi blueprint di app utama
 # app.register_blueprint(face_bp)
 
