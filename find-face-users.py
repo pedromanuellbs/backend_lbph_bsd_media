@@ -1,5 +1,6 @@
 import os
 import io
+import json
 import cv2
 import numpy as np
 from flask import Flask, request, jsonify
@@ -9,8 +10,15 @@ from PIL import Image
 
 # Inisialisasi Flask dan Firebase Admin
 app = Flask(__name__)
-cred = credentials.Certificate('serviceAccountKey.json')
-initialize_app(cred, {'storageBucket': 'db-ta-bsd-media.firebasestorage.app'})
+
+# Ambil credentials dari ENV Railway
+cred_json = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+if not cred_json:
+    raise Exception('GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable not set')
+cred_dict = json.loads(cred_json)
+cred = credentials.Certificate(cred_dict)
+initialize_app(cred, {'storageBucket': 'db-ta-bsd-media.appspot.com'})
+
 db = firestore.client()
 bucket = fb_storage.bucket()
 
@@ -65,18 +73,18 @@ def find_face_users():
 
     # Ambil daftar foto milik user client dari Firestore (atau dari Storage)
     photos_ref = db.collection('photos').where('owner_id', '==', user_id)
-    # Pastikan field 'owner_id' mengacu ke user client
     photo_docs = photos_ref.stream()
 
     for photo_doc in photo_docs:
         photo_data = photo_doc.to_dict()
         photo_url = photo_data.get('url')
-        if not photo_url:
+        storage_path = photo_data.get('storage_path')
+        if not photo_url or not storage_path:
             continue
 
         # Download foto dari Storage untuk verifikasi
         try:
-            blob = bucket.blob(photo_data['storage_path'])
+            blob = bucket.blob(storage_path)
             img_bytes = blob.download_as_bytes()
             pil_photo = Image.open(io.BytesIO(img_bytes)).convert('L')
             np_photo = np.array(pil_photo)
