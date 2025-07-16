@@ -57,6 +57,9 @@ face_bp = Blueprint('face', __name__)
 
 @face_bp.route('/find-face-users', methods=['POST'])
 def find_face_users():
+
+    print("form:", request.form)
+    print("files:", request.files)
     user_id = request.form.get('user_id')  # email klien
     image_file = request.files.get('image')
 
