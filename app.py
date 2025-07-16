@@ -13,6 +13,7 @@ from face_preprocessing import detect_and_crop
 from face_data import update_lbph_model_incrementally, train_and_evaluate_full_dataset, load_model_and_labels
 
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke file config Anda
+from PIL import Image
 
 # --- Import dan setup Firebase Admin SDK ---
 import firebase_admin
