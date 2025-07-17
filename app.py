@@ -72,57 +72,67 @@ app = Flask(__name__)
 
 @app.route('/face_login', methods=['POST'])
 def face_login():
-    """
-    Endpoint untuk verifikasi wajah saat login (VERSI SUPER SEDERHANA).
-    Fungsi ini TIDAK melakukan pengenalan wajah.
-    Ia hanya memeriksa apakah user yang login sudah pernah terdaftar di label map,
-    lalu mencari label yang cocok.
-    """
-    print("===== MULAI face_login (VERSI CARI LABEL) =====")
+    """Endpoint untuk verifikasi wajah saat login (VERSI LENGKAP DAN BENAR)."""
+    print("===== MULAI face_login (VERSI LENGKAP) =====")
     
-    # 1. Ambil user_id dari klien yang sedang mencoba login
+    image = request.files.get('image')
     expected_user_id = request.form.get('user_id')
 
-    # Validasi input dasar
-    if not request.files.get('image') or not expected_user_id:
+    if not image or not expected_user_id:
         return jsonify({'success': False, 'error': "Data tidak lengkap"}), 400
 
-    print(f"INFO: Menerima permintaan login untuk user: {expected_user_id}")
+    print(f"INFO: Menerima permintaan login wajah untuk user: {expected_user_id}")
     
-    try:
-        # 2. Muat data label map yang sudah ada
-        # Kita tetap memuat model agar tidak error, tapi tidak akan kita gunakan
-        model, lblmap = load_model_and_labels()
-        if lblmap is None:
-            print("ERROR: Label map tidak ditemukan.")
-            return jsonify({'success': False, 'error': 'Sistem belum siap, label map tidak ada.'}), 500
+    tmp_filename = f'tmp_login_{expected_user_id}.jpg'
+    os.makedirs(os.path.dirname(tmp_filename) or '.', exist_ok=True)
 
-        # 3. Cari label yang berpasangan dengan user_id yang diharapkan
-        found_label = None
-        for label, user_id in lblmap.items():
-            if user_id == expected_user_id:
-                found_label = label
-                break
-        
-        # 4. Beri keputusan berdasarkan hasil pencarian
-        if found_label is not None:
-            # Jika user ID ditemukan, login langsung dianggap berhasil.
-            print(f"SUCCESS: User {expected_user_id} ditemukan di daftar registrasi dengan Label: {found_label}. Login berhasil.")
+    try:
+        # Selalu unduh model dan map terbaru sebelum digunakan
+        initial_model_check()
+
+        image.save(tmp_filename)
+        gray = detect_and_crop(tmp_filename)
+        if gray is None:
+            return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi.'}), 400
+
+        model, lblmap = load_model_and_labels()
+        if model is None or not lblmap:
+            return jsonify({'success': False, 'error': 'Model belum siap.'}), 500
+
+        label, conf = model.predict(gray)
+        print(f"DEBUG: Prediksi Model -> Label: {label}, Confidence: {conf}")
+
+        CONFIDENCE_THRESHOLD = 125 
+        if label == -1 or conf > CONFIDENCE_THRESHOLD:
+            print(f"INFO: Wajah tidak dikenali (confidence terlalu rendah).")
+            return jsonify({'success': False, 'error': 'Wajah tidak dikenali. Silakan coba lagi.'}), 404
+
+        recognized_user_id = lblmap.get(str(label))
+        if recognized_user_id is None:
+            print(f"ERROR: Label {label} hasil prediksi tidak ada di label map.")
+            return jsonify({'success': False, 'error': 'Error internal: Label tidak valid.'}), 500
+            
+        print(f"INFO: Wajah dikenali sebagai: {recognized_user_id}")
+
+        if recognized_user_id == expected_user_id:
+            print(f"SUCCESS: Verifikasi wajah BERHASIL untuk user {expected_user_id}.")
             return jsonify({
                 'success': True,
-                'message': f'Login berhasil (ditemukan label: {found_label}).',
-                'user_id': expected_user_id
+                'message': 'Login wajah berhasil.',
+                'user_id': recognized_user_id,
+                'confidence': float(conf)
             })
         else:
-            # Jika user ID tidak ditemukan, login gagal.
-            print(f"FAILED: User {expected_user_id} tidak ditemukan di daftar registrasi.")
-            return jsonify({'success': False, 'error': 'Akun Anda belum terdaftar untuk login wajah.'}), 403
+            print(f"FAILED: Verifikasi GAGAL. Wajah dikenali sebagai {recognized_user_id}, tapi diharapkan {expected_user_id}.")
+            return jsonify({'success': False, 'error': 'Wajah tidak cocok dengan akun Anda.'}), 403
 
     except Exception as e:
-        print(f"ERROR: Terjadi error saat face_login (versi cari label): {e}")
+        print(f"ERROR: Terjadi error saat face_login: {e}")
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'Terjadi error internal: {e}'}), 500
-
+    finally:
+        if os.path.exists(tmp_filename):
+            os.remove(tmp_filename)
 
 # ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
