@@ -93,7 +93,7 @@ def face_login():
             print(f"INFO: Wajah tidak dikenali (confidence terlalu rendah).")
             return jsonify({'success': False, 'error': 'Wajah tidak dikenali. Silakan coba lagi.'}), 404
 
-        recognized_user_id = lblmap.get(label)
+        recognized_user_id = lblmap.get(str(label))
         if recognized_user_id is None:
             print(f"ERROR: Label {label} hasil prediksi tidak ada di label map.")
             return jsonify({'success': False, 'error': 'Error internal: Label tidak valid.'}), 500
