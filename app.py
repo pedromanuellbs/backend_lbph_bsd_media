@@ -44,6 +44,29 @@ def upload_to_firebase(local_file, user_id, filename):
     blob.make_public()
     return blob.public_url
 
+def upload_model_files_to_firebase():
+    """Upload file model dan label map yang sudah diupdate ke Firebase Storage."""
+    try:
+        print("DEBUG: Mengupload model dan label map yang diperbarui ke Firebase Storage...")
+        bucket = storage.bucket()
+        
+        # Upload model
+        model_blob = bucket.blob("face-recognition-models/lbph_model.xml")
+        model_blob.upload_from_filename(MODEL_PATH)
+        
+        # Upload label map
+        label_map_blob = bucket.blob("face-recognition-models/labels_map.txt")
+        label_map_blob.upload_from_filename(LABEL_MAP)
+        
+        print("SUCCESS: Model dan label map berhasil diupload ke Firebase Storage.")
+        return True
+    except Exception as e:
+        print(f"ERROR: Gagal mengupload model/label map ke Firebase: {e}")
+        traceback.print_exc()
+        return False
+
+
+
 app = Flask(__name__)
 
 
