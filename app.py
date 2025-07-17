@@ -96,7 +96,7 @@ def face_login():
     except Exception as e:
         return jsonify({'success': False, 'error': f'Terjadi error internal: {e}'}), 500
 
-@app.route('/detect-blur', methods=['POST'])
+@app.route('/detect', methods=['POST'])
 def detect():
     file = request.files['image']
     nparr = np.frombuffer(file.read(), np.uint8)
