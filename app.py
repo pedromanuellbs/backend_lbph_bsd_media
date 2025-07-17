@@ -72,40 +72,28 @@ app = Flask(__name__)
 
 @app.route('/face_login', methods=['POST'])
 def face_login():
-    """Endpoint baru: Hanya verifikasi username klien di Firestore, tanpa scan wajah."""
-    print("===== MULAI face_login (NO FACE SCAN, HANYA CEK USERNAME DI FIREBASE) =====")
-
-    # Bisa 'user_id' (UID) atau 'username', sesuaikan front-end Anda
-    username = request.form.get('username')
+    """Login klien: cek username saja."""
+    username = request.form.get('username')  # ISI HARUS username, misal 'dummy9'
     if not username:
         return jsonify({'success': False, 'error': "Username wajib diisi"}), 400
 
-    print(f"INFO: Menerima permintaan login wajah (hanya username) untuk: {username}")
-
     try:
-        # --- Koneksi Firestore sudah diinit di bagian atas file ---
         db = firestore.client()
-        # Cari user berdasarkan field 'username'
         user_ref = db.collection('users').where('username', '==', username).limit(1)
         user_docs = user_ref.get()
         if not user_docs:
-            print(f"[LOGIN] Username {username} tidak ditemukan di Firestore.")
             return jsonify({'success': False, 'error': 'Username tidak ditemukan di database.'}), 404
 
-        # Jika ditemukan, langsung return success
         user_data = user_docs[0].to_dict()
-        print(f"[LOGIN] Username ditemukan: {user_data.get('email', '-')} (role: {user_data.get('role', '-')})")
         return jsonify({
             'success': True,
-            'message': 'Login username (tanpa wajah) berhasil.',
-            'user_id': user_data.get('uid', ''),
+            'message': 'Login formalitas foto berhasil.',
+            'user_id': user_docs[0].id,              # id dokumen (UID Firebase)
             'username': user_data.get('username', ''),
             'email': user_data.get('email', ''),
             'role': user_data.get('role', ''),
         })
     except Exception as e:
-        print(f"ERROR: Terjadi error saat login username-only: {e}")
-        traceback.print_exc()
         return jsonify({'success': False, 'error': f'Terjadi error internal: {e}'}), 500
 
 # ─── Error Handler ─────────────────────────────────────────────────────────
