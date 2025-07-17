@@ -171,39 +171,39 @@ def home():
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
+    """Endpoint untuk mendaftarkan wajah baru dan melatih ulang model."""
     print("===== MULAI register_face =====")
     user_id = request.form.get('user_id')
-    image   = request.files.get('image')
+    image = request.files.get('image')
     if not user_id or not image:
-        print("ERROR: user_id atau image tidak ada di request.")
-        return jsonify({'success': False, 'error': 'user_id atau image tidak ada di request'}), 400
+        return jsonify({'success': False, 'error': 'user_id atau image tidak ada'}), 400
+
     raw_path = save_face_image(user_id, image)
     if raw_path is None:
-        return jsonify({'success': False, 'error': 'Gagal menyimpan gambar yang diunggah'}), 500
-    try:
-        debug_firebase_url = upload_to_firebase(raw_path, user_id, f"debug_raw_{os.path.basename(raw_path)}")
-        print(f"DEBUG: Gambar mentah diupload ke Firebase untuk debug: {debug_firebase_url}")
-    except Exception as e:
-        print(f"ERROR: Gagal mengupload gambar mentah ke Firebase: {e}")
+        return jsonify({'success': False, 'error': 'Gagal menyimpan gambar'}), 500
+
     try:
         firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
-        print(f"DEBUG: Gambar diupload ke Firebase: {firebase_url}")
     except Exception as e:
-        print(f"ERROR: Gagal mengupload gambar ke Firebase: {e}")
-        traceback.print_exc()
         return jsonify({'success': False, 'error': 'Gagal mengupload gambar ke Firebase'}), 500
-    print("DEBUG: Memulai update model LBPH secara incremental...")
+
     success = update_lbph_model_incrementally(raw_path, user_id)
+    
     try:
         if os.path.exists(raw_path):
             os.remove(raw_path)
-            print(f"DEBUG: Menghapus file sementara: {raw_path}")
     except Exception as e:
         print(f"WARNING: Gagal menghapus file sementara {raw_path}: {e}")
+
     if not success:
         return jsonify({'success': False, 'error': 'Gagal mengupdate model LBPH'}), 500
-    print("INFO: Register face & update model berhasil.")
-    return jsonify({ 'success': True, 'firebase_image_url': firebase_url })
+
+    # --- PERUBAHAN: Panggil fungsi untuk menyimpan salinan permanen ke Firebase ---
+    if not upload_model_files_to_firebase():
+        # Jika gagal upload, kirim warning tapi tetap anggap sukses
+        print("WARNING: Registrasi wajah berhasil, tapi gagal menyimpan salinan permanen ke cloud.")
+
+    return jsonify({'success': True, 'firebase_image_url': firebase_url})
 
 @app.route('/verify_face', methods=['POST'])
 def verify_face():
