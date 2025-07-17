@@ -87,8 +87,8 @@ def face_login():
     os.makedirs(os.path.dirname(tmp_filename) or '.', exist_ok=True)
 
     try:
-        # Selalu unduh model dan map terbaru sebelum digunakan
-        initial_model_check()
+        # Selalu unduh model dan map terbaru sebelum digunakan untuk memastikan data fresh
+        download_latest_models()
 
         image.save(tmp_filename)
         gray = detect_and_crop(tmp_filename)
