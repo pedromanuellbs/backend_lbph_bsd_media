@@ -72,67 +72,41 @@ app = Flask(__name__)
 
 @app.route('/face_login', methods=['POST'])
 def face_login():
-    """Endpoint untuk verifikasi wajah saat login (VERSI LENGKAP DAN BENAR)."""
-    print("===== MULAI face_login (VERSI LENGKAP) =====")
-    
-    image = request.files.get('image')
-    expected_user_id = request.form.get('user_id')
+    """Endpoint baru: Hanya verifikasi username klien di Firestore, tanpa scan wajah."""
+    print("===== MULAI face_login (NO FACE SCAN, HANYA CEK USERNAME DI FIREBASE) =====")
 
-    if not image or not expected_user_id:
-        return jsonify({'success': False, 'error': "Data tidak lengkap"}), 400
+    # Bisa 'user_id' (UID) atau 'username', sesuaikan front-end Anda
+    username = request.form.get('username')
+    if not username:
+        return jsonify({'success': False, 'error': "Username wajib diisi"}), 400
 
-    print(f"INFO: Menerima permintaan login wajah untuk user: {expected_user_id}")
-    
-    tmp_filename = f'tmp_login_{expected_user_id}.jpg'
-    os.makedirs(os.path.dirname(tmp_filename) or '.', exist_ok=True)
+    print(f"INFO: Menerima permintaan login wajah (hanya username) untuk: {username}")
 
     try:
-        # Selalu unduh model dan map terbaru sebelum digunakan untuk memastikan data fresh
-        download_latest_models()
+        # --- Koneksi Firestore sudah diinit di bagian atas file ---
+        db = firestore.client()
+        # Cari user berdasarkan field 'username'
+        user_ref = db.collection('users').where('username', '==', username).limit(1)
+        user_docs = user_ref.get()
+        if not user_docs:
+            print(f"[LOGIN] Username {username} tidak ditemukan di Firestore.")
+            return jsonify({'success': False, 'error': 'Username tidak ditemukan di database.'}), 404
 
-        image.save(tmp_filename)
-        gray = detect_and_crop(tmp_filename)
-        if gray is None:
-            return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi.'}), 400
-
-        model, lblmap = load_model_and_labels()
-        if model is None or not lblmap:
-            return jsonify({'success': False, 'error': 'Model belum siap.'}), 500
-
-        label, conf = model.predict(gray)
-        print(f"DEBUG: Prediksi Model -> Label: {label}, Confidence: {conf}")
-
-        CONFIDENCE_THRESHOLD = 125 
-        if label == -1 or conf > CONFIDENCE_THRESHOLD:
-            print(f"INFO: Wajah tidak dikenali (confidence terlalu rendah).")
-            return jsonify({'success': False, 'error': 'Wajah tidak dikenali. Silakan coba lagi.'}), 404
-
-        recognized_user_id = lblmap.get(str(label))
-        if recognized_user_id is None:
-            print(f"ERROR: Label {label} hasil prediksi tidak ada di label map.")
-            return jsonify({'success': False, 'error': 'Error internal: Label tidak valid.'}), 500
-            
-        print(f"INFO: Wajah dikenali sebagai: {recognized_user_id}")
-
-        if recognized_user_id == expected_user_id:
-            print(f"SUCCESS: Verifikasi wajah BERHASIL untuk user {expected_user_id}.")
-            return jsonify({
-                'success': True,
-                'message': 'Login wajah berhasil.',
-                'user_id': recognized_user_id,
-                'confidence': float(conf)
-            })
-        else:
-            print(f"FAILED: Verifikasi GAGAL. Wajah dikenali sebagai {recognized_user_id}, tapi diharapkan {expected_user_id}.")
-            return jsonify({'success': False, 'error': 'Wajah tidak cocok dengan akun Anda.'}), 403
-
+        # Jika ditemukan, langsung return success
+        user_data = user_docs[0].to_dict()
+        print(f"[LOGIN] Username ditemukan: {user_data.get('email', '-')} (role: {user_data.get('role', '-')})")
+        return jsonify({
+            'success': True,
+            'message': 'Login username (tanpa wajah) berhasil.',
+            'user_id': user_data.get('uid', ''),
+            'username': user_data.get('username', ''),
+            'email': user_data.get('email', ''),
+            'role': user_data.get('role', ''),
+        })
     except Exception as e:
-        print(f"ERROR: Terjadi error saat face_login: {e}")
+        print(f"ERROR: Terjadi error saat login username-only: {e}")
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'Terjadi error internal: {e}'}), 500
-    finally:
-        if os.path.exists(tmp_filename):
-            os.remove(tmp_filename)
 
 # ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
