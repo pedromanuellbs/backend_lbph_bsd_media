@@ -96,6 +96,32 @@ def face_login():
     except Exception as e:
         return jsonify({'success': False, 'error': f'Terjadi error internal: {e}'}), 500
 
+@app.route('/detect-blur', methods=['POST'])
+def detect():
+    file = request.files['image']
+    nparr = np.frombuffer(file.read(), np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    # Deteksi objek, misal dengan cascade classifier
+    # Misal contoh untuk deteksi objek generik
+    cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+    objects = cascade.detectMultiScale(img, scaleFactor=1.1, minNeighbors=5)
+    
+    results = []
+    for (x, y, w, h) in objects:
+        results.append({
+            "left": int(x),
+            "top": int(y),
+            "width": int(w),
+            "height": int(h)
+        })
+    return jsonify({
+        "boxes": results,
+        "width": img.shape[1],
+        "height": img.shape[0]
+    })
+    
+
 # ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
 def handle_exceptions(e):
