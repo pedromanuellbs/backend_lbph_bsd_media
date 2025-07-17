@@ -89,7 +89,7 @@ def face_login():
         print(f"DEBUG: Prediksi Model -> Label: {label}, Confidence: {conf}")
 
         # 5. Lakukan verifikasi
-        if label == -1 or conf > 105:
+        if label == -1 or conf > 115:
             print(f"INFO: Wajah tidak dikenali (confidence terlalu rendah).")
             return jsonify({'success': False, 'error': 'Wajah tidak dikenali. Silakan coba lagi.'}), 404
 
