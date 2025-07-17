@@ -49,19 +49,14 @@ app = Flask(__name__)
 
 @app.route('/face_login', methods=['POST'])
 def face_login():
-    """
-    Endpoint untuk verifikasi wajah saat login.
-    Menerima 'user_id' yang diharapkan dan 'image' untuk diverifikasi.
-    """
+    """Endpoint untuk verifikasi wajah saat login."""
     print("===== MULAI face_login =====")
     
-    # 1. Ambil data dari request
     image = request.files.get('image')
-    expected_user_id = request.form.get('user_id') # Ini adalah UID dari Firebase
+    expected_user_id = request.form.get('user_id')
 
     if not image or not expected_user_id:
-        print("ERROR: 'image' atau 'user_id' tidak ada di request.")
-        return jsonify({'success': False, 'error': "Data tidak lengkap: 'image' atau 'user_id' wajib ada."}), 400
+        return jsonify({'success': False, 'error': "Data tidak lengkap"}), 400
 
     print(f"INFO: Menerima permintaan login wajah untuk user: {expected_user_id}")
     
@@ -69,30 +64,25 @@ def face_login():
     os.makedirs(os.path.dirname(tmp_filename) or '.', exist_ok=True)
 
     try:
-        # 2. Simpan gambar sementara dan proses
         image.save(tmp_filename)
-        print(f"DEBUG: Gambar login disimpan sementara ke: {tmp_filename}")
-
         gray = detect_and_crop(tmp_filename)
         if gray is None:
-            print("WARNING: Wajah tidak terdeteksi pada gambar login.")
             return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi.'}), 400
 
-        # 3. Muat model dan label yang sudah ada
         model, lblmap = load_model_and_labels()
         if model is None or not lblmap:
-            print("ERROR: Model LBPH atau label map tidak ditemukan. Tidak dapat verifikasi.")
-            return jsonify({'success': False, 'error': 'Model pengenalan wajah belum siap.'}), 500
+            return jsonify({'success': False, 'error': 'Model belum siap.'}), 500
 
-        # 4. Prediksi wajah dari gambar yang diunggah
         label, conf = model.predict(gray)
         print(f"DEBUG: Prediksi Model -> Label: {label}, Confidence: {conf}")
 
-        # 5. Lakukan verifikasi
-        if label == -1 or conf > 115:
+        # Batas confidence, bisa disesuaikan
+        CONFIDENCE_THRESHOLD = 115 
+        if label == -1 or conf > CONFIDENCE_THRESHOLD:
             print(f"INFO: Wajah tidak dikenali (confidence terlalu rendah).")
             return jsonify({'success': False, 'error': 'Wajah tidak dikenali. Silakan coba lagi.'}), 404
 
+        # Perbaikan penting: konversi label ke string sebelum mencari di map
         recognized_user_id = lblmap.get(str(label))
         if recognized_user_id is None:
             print(f"ERROR: Label {label} hasil prediksi tidak ada di label map.")
@@ -100,7 +90,7 @@ def face_login():
             
         print(f"INFO: Wajah dikenali sebagai: {recognized_user_id}")
 
-        # 6. Cocokkan hasil prediksi dengan user yang sedang login
+        # Verifikasi 2 tahap: apakah wajah yang dikenali adalah pemilik akun yang login?
         if recognized_user_id == expected_user_id:
             print(f"SUCCESS: Verifikasi wajah BERHASIL untuk user {expected_user_id}.")
             return jsonify({
@@ -111,19 +101,15 @@ def face_login():
             })
         else:
             print(f"FAILED: Verifikasi GAGAL. Wajah dikenali sebagai {recognized_user_id}, tapi diharapkan {expected_user_id}.")
-            # Respon inilah yang akan memunculkan dialog error di aplikasi
-            return jsonify({'success': False, 'error': 'Wajah tidak cocok dengan akun Anda.'}), 403 # 403 Forbidden
+            return jsonify({'success': False, 'error': 'Wajah tidak cocok dengan akun Anda.'}), 403
 
     except Exception as e:
         print(f"ERROR: Terjadi error saat face_login: {e}")
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'Terjadi error internal: {e}'}), 500
     finally:
-        # 7. Hapus file sementara setelah selesai
         if os.path.exists(tmp_filename):
             os.remove(tmp_filename)
-            print(f"DEBUG: Menghapus file sementara: {tmp_filename}")
-
 
 # ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
