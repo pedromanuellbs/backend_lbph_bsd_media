@@ -70,8 +70,6 @@ def face_login():
         return jsonify({'success': False, 'error': 'UID atau image tidak ada'}), 400
 
     temp_img_path = None
-    model_path = None
-    label_map_path = None
 
     try:
         # Simpan gambar sementara
@@ -79,37 +77,8 @@ def face_login():
             image.save(temp_img_file)
             temp_img_path = temp_img_file.name
 
-        # Download model & label map dari Firebase Storage pada folder user ini
-        def download_user_model_files_from_firebase(uid):
-            from firebase_admin import storage
-            import tempfile
-
-            bucket = storage.bucket()
-            model_blob = bucket.blob(f'face-dataset/{uid}/model/lbph_model.xml')
-            label_map_blob = bucket.blob(f'face-dataset/{uid}/model/labels_map.txt')
-            temp_model_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xml')
-            temp_label_file = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
-            model_blob.download_to_filename(temp_model_file.name)
-            label_map_blob.download_to_filename(temp_label_file.name)
-            return temp_model_file.name, temp_label_file.name
-
-        model_path, label_map_path = download_user_model_files_from_firebase(uid)
-
-        # Fungsi untuk memuat label_map
-        def load_label_map(label_map_path):
-            label_map = {}
-            with open(label_map_path, "r") as f:
-                 for line in f:
-                    parts = line.strip().split(',')
-                    if len(parts) != 2:
-                        print(f"WARNING: Baris label map tidak valid: '{line.strip()}'")
-                        continue
-                    label, label_uid = parts
-                    label_map[int(label)] = label_uid
-            return label_map
-
-        # Deteksi wajah dan crop
-        def detect_and_crop_face(img_path):
+        # Deteksi wajah saja dengan MTCNN
+        def detect_faces_only(img_path):
             from PIL import Image
             import numpy as np
             from mtcnn import MTCNN
@@ -118,37 +87,13 @@ def face_login():
             detector = MTCNN()
             faces = detector.detect_faces(img_np)
             print(f"DEBUG: Jumlah wajah terdeteksi (MTCNN): {len(faces)}")
-            if len(faces) != 1:
-                return None
-            x, y, w, h = faces[0]['box']
-            # Pastikan bounding box positif
-            x, y = max(0, x), max(0, y)
-            face_img = img_np[y:y+h, x:x+w]
-            # Konversi ke grayscale dan resize
-            import cv2
-            face_img = cv2.cvtColor(face_img, cv2.COLOR_RGB2GRAY)
-            face_img = cv2.resize(face_img, (200, 200))
-            return face_img
+            return len(faces)
 
-        face_img = detect_and_crop_face(temp_img_path)
-        if face_img is None:
-            return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi, atau lebih dari satu wajah'}), 400
-
-        # Load model LBPH dan label map user
-        import cv2
-        lbph_model = cv2.face.LBPHFaceRecognizer_create()
-        lbph_model.read(model_path)
-        label_map = load_label_map(label_map_path)
-
-        # Prediksi wajah
-        label, confidence = lbph_model.predict(face_img)
-        predicted_uid = label_map.get(label, None)
-
-        THRESHOLD = 70  # Atur sesuai modelmu
-        if predicted_uid == uid and confidence < THRESHOLD:
+        num_faces = detect_faces_only(temp_img_path)
+        if num_faces == 1:
             return jsonify({'success': True})
         else:
-            return jsonify({'success': False, 'error': 'Deteksi wajah tidak sama, silakan daftar ulang.'}), 401
+            return jsonify({'success': False, 'error': 'Tidak ada atau lebih dari satu wajah terdeteksi.'}), 400
 
     except Exception as e:
         import traceback
@@ -158,12 +103,11 @@ def face_login():
 
     finally:
         # Pembersihan file sementara
-        for f in [model_path, label_map_path, temp_img_path]:
-            try:
-                if f and os.path.exists(f):
-                    os.remove(f)
-            except Exception as cleanup_error:
-                print(f"WARNING: Gagal menghapus file sementara {f}: {cleanup_error}")
+        try:
+            if temp_img_path and os.path.exists(temp_img_path):
+                os.remove(temp_img_path)
+        except Exception as cleanup_error:
+            print(f"WARNING: Gagal menghapus file sementara {temp_img_path}: {cleanup_error}")
 
 def download_model_and_labels_if_needed(model_path, label_map_path):
     MODEL_URL = "https://firebasestorage.googleapis.com/v0/b/db-ta-bsd-media.firebasestorage.app/o/face-recognition-models%2Flbph_model.xml?alt=media&token=26656ed8-3cd1-4220-a07d-aad9aaeb91f5"
