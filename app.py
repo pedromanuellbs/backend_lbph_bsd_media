@@ -110,17 +110,23 @@ def face_login():
 
         # Deteksi wajah dan crop
         def detect_and_crop_face(img_path):
-            import cv2
-            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-            img = cv2.imread(img_path)
-            if img is None:
-                return None
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            faces = face_cascade.detectMultiScale(gray, 1.1, 5)
+            from PIL import Image
+            import numpy as np
+            from mtcnn import MTCNN
+            img = Image.open(img_path).convert('RGB')
+            img_np = np.asarray(img)
+            detector = MTCNN()
+            faces = detector.detect_faces(img_np)
+            print(f"DEBUG: Jumlah wajah terdeteksi (MTCNN): {len(faces)}")
             if len(faces) != 1:
-                return None  # Harus satu wajah saja
-            (x, y, w, h) = faces[0]
-            face_img = gray[y:y+h, x:x+w]
+                return None
+            x, y, w, h = faces[0]['box']
+            # Pastikan bounding box positif
+            x, y = max(0, x), max(0, y)
+            face_img = img_np[y:y+h, x:x+w]
+            # Konversi ke grayscale dan resize
+            import cv2
+            face_img = cv2.cvtColor(face_img, cv2.COLOR_RGB2GRAY)
             face_img = cv2.resize(face_img, (200, 200))
             return face_img
 
