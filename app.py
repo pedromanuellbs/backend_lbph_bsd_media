@@ -65,6 +65,7 @@ def face_login():
 
     uid = request.form.get('uid')
     image = request.files.get('image')
+    print(f"DEBUG UID: {uid}, IMAGE: {image}")
     if not uid or not image:
         return jsonify({'success': False, 'error': 'UID atau image tidak ada'}), 400
 
