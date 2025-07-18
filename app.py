@@ -5,17 +5,15 @@ import numpy as np
 import requests
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
-import time # Import time untuk timestamp
+import time
 
 from face_preprocessing import detect_and_crop
-# Import fungsi yang diperbarui dari face_data
 from face_data import update_lbph_model_incrementally, train_and_evaluate_full_dataset, load_model_and_labels
 
-from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke file config Anda
+from config import FACES_DIR, MODEL_PATH, LABEL_MAP
 
 from google.cloud import firestore
 
-# --- Import dan setup Firebase Admin SDK ---
 import firebase_admin
 from firebase_admin import credentials, storage, firestore
 
@@ -23,7 +21,6 @@ from gdrive_match import find_matching_photos, find_all_matching_photos, get_all
 
 if not firebase_admin._apps:
     try:
-        # Asumsi GOOGLE_APPLICATION_CREDENTIALS_JSON diset sebagai variabel lingkungan di Railway
         cred_info = json.loads(os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'])
         cred = credentials.Certificate(cred_info)
         firebase_admin.initialize_app(cred, {
@@ -37,9 +34,7 @@ if not firebase_admin._apps:
         print(f"ERROR initializing Firebase Admin SDK: {e}")
         traceback.print_exc()
 
-# Fungsi helper untuk upload file ke Firebase Storage
 def upload_to_firebase(local_file, user_id, filename):
-    """Upload file ke Firebase Storage dan return URL download-nya"""
     bucket = storage.bucket()
     blob = bucket.blob(f"face-dataset/{user_id}/{filename}")
     blob.upload_from_filename(local_file)
@@ -47,19 +42,13 @@ def upload_to_firebase(local_file, user_id, filename):
     return blob.public_url
 
 def upload_model_files_to_firebase():
-    """Upload file model dan label map yang sudah diupdate ke Firebase Storage."""
     try:
         print("DEBUG: Mengupload model dan label map yang diperbarui ke Firebase Storage...")
         bucket = storage.bucket()
-        
-        # Upload model
         model_blob = bucket.blob("face-recognition-models/lbph_model.xml")
         model_blob.upload_from_filename(MODEL_PATH)
-        
-        # Upload label map
         label_map_blob = bucket.blob("face-recognition-models/labels_map.txt")
         label_map_blob.upload_from_filename(LABEL_MAP)
-        
         print("SUCCESS: Model dan label map berhasil diupload ke Firebase Storage.")
         return True
     except Exception as e:
@@ -67,18 +56,15 @@ def upload_model_files_to_firebase():
         traceback.print_exc()
         return False
 
-
-
 app = Flask(__name__)
-
 
 @app.route('/face_login', methods=['POST'])
 def face_login():
-    # 1. Ambil username & gambar
-    username = request.form.get('username')
+    # 1. Ambil uid & gambar
+    uid = request.form.get('uid')
     image_file = request.files.get('image')
-    if not username or image_file is None:
-        return jsonify({'success': False, 'error': "Username dan foto wajib diisi"}), 400
+    if not uid or image_file is None:
+        return jsonify({'success': False, 'error': "UID dan foto wajib diisi"}), 400
 
     # 2. Download model LBPH & label map dari Firebase Storage (skip jika sudah ada lokal)
     model_path = "/app/lbph_model.xml"
@@ -89,14 +75,15 @@ def face_login():
     labels_map = {}
     with open(label_map_path, "r") as f:
         for line in f:
-            label, uid = line.strip().split(":")
-            labels_map[int(label)] = uid
+            if ":" in line:
+                label, label_uid = line.strip().split(":")
+                labels_map[int(label)] = label_uid
 
     # 4. Simpan gambar upload ke file sementara
     temp_image_path = "/tmp/uploaded_face.jpg"
     image_file.save(temp_image_path)
 
-    # 5. Deteksi dan crop wajah (gunakan MTCNN/openCV face detector; disederhanakan)
+    # 5. Deteksi dan crop wajah
     face_img = detect_and_crop_face(temp_image_path)
     if face_img is None:
         return jsonify({'success': False, 'error': "Wajah tidak terdeteksi"}), 400
@@ -109,25 +96,44 @@ def face_login():
     recognizer.read(model_path)
     predicted_label, confidence = recognizer.predict(gray_face)
 
-    # 8. Cek hasil
+    # 8. Cek hasil prediksi
     predicted_uid = labels_map.get(predicted_label)
-    if predicted_uid == username:
-        # Berhasil login
+    print(f"DEBUG: UID input: {uid}, Predicted UID: {predicted_uid}, Confidence: {confidence}")
+    CONFIDENCE_THRESHOLD = 70
+    if predicted_uid == uid and confidence < CONFIDENCE_THRESHOLD:
         return jsonify({'success': True, 'message': 'Login formalitas foto berhasil.', 'user_id': predicted_uid})
     else:
-        return jsonify({'success': False, 'error': 'Wajah tidak dikenali sebagai user ini.'}), 401
+        return jsonify({
+            'success': False,
+            'error': f'Wajah tidak dikenali sebagai user ini. (confidence={confidence:.2f})'
+        }), 401
 
-# --- Fungsi helper (pseudo)
 def download_model_and_labels_if_needed(model_path, label_map_path):
-    # Download LBPH model dan label map dari Firebase Storage jika belum ada lokal
-    pass
+    MODEL_URL = "https://firebasestorage.googleapis.com/v0/b/db-ta-bsd-media.firebasestorage.app/o/face-recognition-models%2Flbph_model.xml?alt=media&token=26656ed8-3cd1-4220-a07d-aad9aaeb91f5"
+    LABEL_MAP_URL = "https://firebasestorage.googleapis.com/v0/b/db-ta-bsd-media.firebasestorage.app/o/face-recognition-models%2Flabels_map.txt?alt=media&token=2ab5957f-78b2-41b0-a1aa-b2f1b8675f54"
+    if not os.path.exists(model_path):
+        download_file_from_url(MODEL_URL, model_path)
+    if not os.path.exists(label_map_path):
+        download_file_from_url(LABEL_MAP_URL, label_map_path)
 
 def detect_and_crop_face(image_path):
-    # Deteksi wajah, crop dan resize ke 96x96, return np.array
-    # Bisa pakai MTCNN, dlib, atau OpenCV
-    pass
+    # Contoh: pakai OpenCV haarcascade, atau ganti dengan MTCNN jika ada
+    image = cv2.imread(image_path)
+    if image is None:
+        print("Failed to read image.")
+        return None
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+    print(f"Faces detected: {len(faces)}")
+    if len(faces) == 0:
+        return None
+    (x, y, w, h) = faces[0]
+    cropped = image[y:y+h, x:x+w]
+    cropped_resized = cv2.resize(cropped, (96, 96))
+    cropped_rgb = cv2.cvtColor(cropped_resized, cv2.COLOR_BGR2RGB)
+    return cropped_rgb
 
-# ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
 def handle_exceptions(e):
     tb = traceback.format_exc()
@@ -135,10 +141,8 @@ def handle_exceptions(e):
     print(tb)
     return jsonify({'success': False, 'error': str(e)}), 500
 
-# ─── Konstanta ─────────────────────────────────────────────────────────────
 os.makedirs(FACES_DIR, exist_ok=True)
 
-# --- TEMPAT TERBAIK UNTUK FUNGSI DOWNLOAD_FILE_FROM_URL ---
 def download_file_from_url(url, destination):
     try:
         print(f"DEBUG: Mengunduh {url} ke {destination}")
@@ -197,7 +201,6 @@ def home():
 
 @app.route('/register_face', methods=['POST'])
 def register_face():
-    """Endpoint untuk mendaftarkan wajah baru dan melatih ulang model."""
     print("===== MULAI register_face =====")
     user_id = request.form.get('user_id')
     image = request.files.get('image')
@@ -224,9 +227,7 @@ def register_face():
     if not success:
         return jsonify({'success': False, 'error': 'Gagal mengupdate model LBPH'}), 500
 
-    # --- PERUBAHAN: Panggil fungsi untuk menyimpan salinan permanen ke Firebase ---
     if not upload_model_files_to_firebase():
-        # Jika gagal upload, kirim warning tapi tetap anggap sukses
         print("WARNING: Registrasi wajah berhasil, tapi gagal menyimpan salinan permanen ke cloud.")
 
     return jsonify({'success': True, 'firebase_image_url': firebase_url})
@@ -326,7 +327,6 @@ def find_my_photos():
         cv2.imwrite(user_tmp, img)
         print(f"DEBUG: Gambar klien yang sudah bersih disimpan kembali ke: {user_tmp}")
 
-        # --- MODE 1: Filter folder tertentu (search.dart) ---
         drive_links = request.form.get('drive_links')
         if drive_links:
             try:
@@ -338,28 +338,23 @@ def find_my_photos():
 
             print(f"DEBUG: Filter pencarian hanya di folder Google Drive berikut: {drive_folders}")
             matched_photos = []
-            # Ambil semua sesi dari Firestore untuk mapping folder_id -> doc_id
-            folder_data = get_all_gdrive_folder_ids()  # list of dict: {'firestore_doc_id', 'drive_folder_id'}
+            folder_data = get_all_gdrive_folder_ids()
             folderid_to_docid = {fd['drive_folder_id']: fd['firestore_doc_id'] for fd in folder_data}
             for link in drive_folders:
                 if 'folders/' in link:
                     folder_id = link.split('folders/')[1].split('?')[0]
-                    # Dapatkan session_id (Firestore doc id) dari mapping
                     session_id = folderid_to_docid.get(folder_id)
                     matches = find_matching_photos(user_tmp, folder_id, session_id)
-                    # Inject sessionId ke setiap hasil
                     for m in matches:
                         m['sessionId'] = session_id
                     matched_photos.extend(matches)
             print("INFO: Pencarian foto berdasarkan drive_links selesai. Mengirimkan respons.")
             return jsonify({'success': True, 'matched_photos': matched_photos})
 
-        # --- MODE 2: Cari seluruh database fotografer (home.dart) ---
         print("DEBUG: Tidak ada drive_links, mencari ke seluruh database sesi.")
-        all_folder_data = get_all_gdrive_folder_ids()  # list of dict: {'firestore_doc_id', 'drive_folder_id'}
+        all_folder_data = get_all_gdrive_folder_ids()
         print(f"DEBUG: Ditemukan {len(all_folder_data)} folder Google Drive.")
         matches = find_all_matching_photos(user_tmp, all_folder_data)
-        # Inject sessionId ke setiap hasil jika perlu (harusnya sudah diisi)
         for m in matches:
             session_id = m.get('sessionId') or m.get('folder_id')
             m['sessionId'] = session_id
@@ -374,6 +369,7 @@ def find_my_photos():
         if os.path.exists('tmp_user_search.jpg'):
             os.remove('tmp_user_search.jpg')
             print(f"DEBUG: Menghapus file sementara: tmp_user_search.jpg")
+
 @app.route('/debug_ls', methods=['GET'])
 def debug_ls():
     result = {}
