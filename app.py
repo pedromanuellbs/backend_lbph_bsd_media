@@ -13,6 +13,8 @@ from face_data import update_lbph_model_incrementally, train_and_evaluate_full_d
 
 from config import FACES_DIR, MODEL_PATH, LABEL_MAP # Pastikan ini mengarah ke file config Anda
 
+from google.cloud import firestore
+
 # --- Import dan setup Firebase Admin SDK ---
 import firebase_admin
 from firebase_admin import credentials, storage, firestore
@@ -72,29 +74,58 @@ app = Flask(__name__)
 
 @app.route('/face_login', methods=['POST'])
 def face_login():
-    """Login klien: cek username saja."""
-    username = request.form.get('username')  # ISI HARUS username, misal 'dummy9'
-    if not username:
-        return jsonify({'success': False, 'error': "Username wajib diisi"}), 400
+    # 1. Ambil username & gambar
+    username = request.form.get('username')
+    image_file = request.files.get('image')
+    if not username or image_file is None:
+        return jsonify({'success': False, 'error': "Username dan foto wajib diisi"}), 400
 
-    try:
-        db = firestore.client()
-        user_ref = db.collection('users').where('username', '==', username).limit(1)
-        user_docs = user_ref.get()
-        if not user_docs:
-            return jsonify({'success': False, 'error': 'Username tidak ditemukan di database.'}), 404
+    # 2. Download model LBPH & label map dari Firebase Storage (skip jika sudah ada lokal)
+    model_path = "/app/lbph_model.xml"
+    label_map_path = "/app/labels_map.txt"
+    download_model_and_labels_if_needed(model_path, label_map_path)
+    
+    # 3. Baca label map (UID <-> label int)
+    labels_map = {}
+    with open(label_map_path, "r") as f:
+        for line in f:
+            label, uid = line.strip().split(":")
+            labels_map[int(label)] = uid
 
-        user_data = user_docs[0].to_dict()
-        return jsonify({
-            'success': True,
-            'message': 'Login formalitas foto berhasil.',
-            'user_id': user_docs[0].id,              # id dokumen (UID Firebase)
-            'username': user_data.get('username', ''),
-            'email': user_data.get('email', ''),
-            'role': user_data.get('role', ''),
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'error': f'Terjadi error internal: {e}'}), 500
+    # 4. Simpan gambar upload ke file sementara
+    temp_image_path = "/tmp/uploaded_face.jpg"
+    image_file.save(temp_image_path)
+
+    # 5. Deteksi dan crop wajah (gunakan MTCNN/openCV face detector; disederhanakan)
+    face_img = detect_and_crop_face(temp_image_path)
+    if face_img is None:
+        return jsonify({'success': False, 'error': "Wajah tidak terdeteksi"}), 400
+
+    # 6. Konversi ke grayscale
+    gray_face = cv2.cvtColor(face_img, cv2.COLOR_RGB2GRAY)
+
+    # 7. Load model LBPH & prediksi
+    recognizer = cv2.face.LBPHFaceRecognizer_create()
+    recognizer.read(model_path)
+    predicted_label, confidence = recognizer.predict(gray_face)
+
+    # 8. Cek hasil
+    predicted_uid = labels_map.get(predicted_label)
+    if predicted_uid == username:
+        # Berhasil login
+        return jsonify({'success': True, 'message': 'Login formalitas foto berhasil.', 'user_id': predicted_uid})
+    else:
+        return jsonify({'success': False, 'error': 'Wajah tidak dikenali sebagai user ini.'}), 401
+
+# --- Fungsi helper (pseudo)
+def download_model_and_labels_if_needed(model_path, label_map_path):
+    # Download LBPH model dan label map dari Firebase Storage jika belum ada lokal
+    pass
+
+def detect_and_crop_face(image_path):
+    # Deteksi wajah, crop dan resize ke 96x96, return np.array
+    # Bisa pakai MTCNN, dlib, atau OpenCV
+    pass
 
 # ─── Error Handler ─────────────────────────────────────────────────────────
 @app.errorhandler(Exception)
