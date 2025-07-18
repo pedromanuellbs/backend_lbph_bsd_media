@@ -60,53 +60,99 @@ app = Flask(__name__)
 
 @app.route('/face_login', methods=['POST'])
 def face_login():
-    # 1. Ambil uid & gambar
+    import tempfile
+    import os
+
     uid = request.form.get('uid')
-    image_file = request.files.get('image')
-    if not uid or image_file is None:
-        return jsonify({'success': False, 'error': "UID dan foto wajib diisi"}), 400
+    image = request.files.get('image')
+    if not uid or not image:
+        return jsonify({'success': False, 'error': 'UID atau image tidak ada'}), 400
 
-    # 2. Download model LBPH & label map dari Firebase Storage (skip jika sudah ada lokal)
-    model_path = "/app/lbph_model.xml"
-    label_map_path = "/app/labels_map.txt"
-    download_model_and_labels_if_needed(model_path, label_map_path)
-    
-    # 3. Baca label map (UID <-> label int)
-    labels_map = {}
-    with open(label_map_path, "r") as f:
-        for line in f:
-            if ":" in line:
-                label, label_uid = line.strip().split(":")
-                labels_map[int(label)] = label_uid
+    temp_img_path = None
+    model_path = None
+    label_map_path = None
 
-    # 4. Simpan gambar upload ke file sementara
-    temp_image_path = "/tmp/uploaded_face.jpg"
-    image_file.save(temp_image_path)
+    try:
+        # Simpan gambar sementara
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_img_file:
+            image.save(temp_img_file)
+            temp_img_path = temp_img_file.name
 
-    # 5. Deteksi dan crop wajah
-    face_img = detect_and_crop_face(temp_image_path)
-    if face_img is None:
-        return jsonify({'success': False, 'error': "Wajah tidak terdeteksi"}), 400
+        # Download model & label map dari Firebase Storage pada folder user ini
+        def download_user_model_files_from_firebase(uid):
+            from firebase_admin import storage
+            import tempfile
 
-    # 6. Konversi ke grayscale
-    gray_face = cv2.cvtColor(face_img, cv2.COLOR_RGB2GRAY)
+            bucket = storage.bucket()
+            model_blob = bucket.blob(f'face-dataset/{uid}/model/lbph_model.xml')
+            label_map_blob = bucket.blob(f'face-dataset/{uid}/model/labels_map.txt')
+            temp_model_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xml')
+            temp_label_file = tempfile.NamedTemporaryFile(delete=False, suffix='.txt')
+            model_blob.download_to_filename(temp_model_file.name)
+            label_map_blob.download_to_filename(temp_label_file.name)
+            return temp_model_file.name, temp_label_file.name
 
-    # 7. Load model LBPH & prediksi
-    recognizer = cv2.face.LBPHFaceRecognizer_create()
-    recognizer.read(model_path)
-    predicted_label, confidence = recognizer.predict(gray_face)
+        model_path, label_map_path = download_user_model_files_from_firebase(uid)
 
-    # 8. Cek hasil prediksi
-    predicted_uid = labels_map.get(predicted_label)
-    print(f"DEBUG: UID input: {uid}, Predicted UID: {predicted_uid}, Confidence: {confidence}")
-    CONFIDENCE_THRESHOLD = 70
-    if predicted_uid == uid and confidence < CONFIDENCE_THRESHOLD:
-        return jsonify({'success': True, 'message': 'Login formalitas foto berhasil.', 'user_id': predicted_uid})
-    else:
-        return jsonify({
-            'success': False,
-            'error': f'Wajah tidak dikenali sebagai user ini. (confidence={confidence:.2f})'
-        }), 401
+        # Fungsi untuk memuat label_map
+        def load_label_map(label_map_path):
+            label_map = {}
+            with open(label_map_path, "r") as f:
+                for line in f:
+                    label, label_uid = line.strip().split(',')
+                    label_map[int(label)] = label_uid
+            return label_map
+
+        # Deteksi wajah dan crop
+        def detect_and_crop_face(img_path):
+            import cv2
+            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+            img = cv2.imread(img_path)
+            if img is None:
+                return None
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(gray, 1.1, 5)
+            if len(faces) != 1:
+                return None  # Harus satu wajah saja
+            (x, y, w, h) = faces[0]
+            face_img = gray[y:y+h, x:x+w]
+            face_img = cv2.resize(face_img, (200, 200))
+            return face_img
+
+        face_img = detect_and_crop_face(temp_img_path)
+        if face_img is None:
+            return jsonify({'success': False, 'error': 'Wajah tidak terdeteksi, atau lebih dari satu wajah'}), 400
+
+        # Load model LBPH dan label map user
+        import cv2
+        lbph_model = cv2.face.LBPHFaceRecognizer_create()
+        lbph_model.read(model_path)
+        label_map = load_label_map(label_map_path)
+
+        # Prediksi wajah
+        label, confidence = lbph_model.predict(face_img)
+        predicted_uid = label_map.get(label, None)
+
+        THRESHOLD = 70  # Atur sesuai modelmu
+        if predicted_uid == uid and confidence < THRESHOLD:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Deteksi wajah tidak sama, silakan daftar ulang.'}), 401
+
+    except Exception as e:
+        import traceback
+        print("ERROR in /face_login:", e)
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+    finally:
+        # Pembersihan file sementara
+        for f in [model_path, label_map_path, temp_img_path]:
+            try:
+                if f and os.path.exists(f):
+                    os.remove(f)
+            except Exception as cleanup_error:
+                print(f"WARNING: Gagal menghapus file sementara {f}: {cleanup_error}")
 
 def download_model_and_labels_if_needed(model_path, label_map_path):
     MODEL_URL = "https://firebasestorage.googleapis.com/v0/b/db-ta-bsd-media.firebasestorage.app/o/face-recognition-models%2Flbph_model.xml?alt=media&token=26656ed8-3cd1-4220-a07d-aad9aaeb91f5"
@@ -212,12 +258,14 @@ def register_face():
         return jsonify({'success': False, 'error': 'Gagal menyimpan gambar'}), 500
 
     try:
+        # Upload foto ke Firebase Storage di folder user_id
         firebase_url = upload_to_firebase(raw_path, user_id, os.path.basename(raw_path))
     except Exception as e:
         return jsonify({'success': False, 'error': 'Gagal mengupload gambar ke Firebase'}), 500
 
+    # Update/train model khusus user ini
     success = update_lbph_model_incrementally(raw_path, user_id)
-    
+
     try:
         if os.path.exists(raw_path):
             os.remove(raw_path)
@@ -227,7 +275,23 @@ def register_face():
     if not success:
         return jsonify({'success': False, 'error': 'Gagal mengupdate model LBPH'}), 500
 
-    if not upload_model_files_to_firebase():
+    # Upload model dan label map ke folder UID di Firebase Storage
+    def upload_user_model_files_to_firebase(uid):
+        try:
+            bucket = storage.bucket()
+            # Simpan model di subfolder 'model' dalam folder UID
+            model_blob = bucket.blob(f"face-dataset/{uid}/model/lbph_model.xml")
+            model_blob.upload_from_filename(MODEL_PATH)
+            label_map_blob = bucket.blob(f"face-dataset/{uid}/model/labels_map.txt")
+            label_map_blob.upload_from_filename(LABEL_MAP)
+            print(f"SUCCESS: Model dan label map berhasil diupload ke Firebase Storage untuk user {uid}.")
+            return True
+        except Exception as e:
+            print(f"ERROR: Gagal mengupload model/label map ke Firebase untuk user {uid}: {e}")
+            traceback.print_exc()
+            return False
+
+    if not upload_user_model_files_to_firebase(user_id):
         print("WARNING: Registrasi wajah berhasil, tapi gagal menyimpan salinan permanen ke cloud.")
 
     return jsonify({'success': True, 'firebase_image_url': firebase_url})
