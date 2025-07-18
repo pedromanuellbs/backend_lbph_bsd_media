@@ -99,8 +99,12 @@ def face_login():
         def load_label_map(label_map_path):
             label_map = {}
             with open(label_map_path, "r") as f:
-                for line in f:
-                    label, label_uid = line.strip().split(',')
+                 for line in f:
+                    parts = line.strip().split(',')
+                    if len(parts) != 2:
+                        print(f"WARNING: Baris label map tidak valid: '{line.strip()}'")
+                        continue
+                    label, label_uid = parts
                     label_map[int(label)] = label_uid
             return label_map
 
